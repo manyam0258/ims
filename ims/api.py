@@ -785,6 +785,22 @@ def upload_revision(marketing_asset: str, notes: str = "") -> dict:
         frappe.throw(_("Please attach a file"))
 
     file = frappe.request.files["file"]
+
+    # Ensure unique filename to prevent FileExistsError
+    import textwrap
+    from frappe.utils import now_datetime
+
+    timestamp = now_datetime().strftime("%Y%m%d%H%M%S")
+    original_name = file.filename
+    name_parts = original_name.rsplit(".", 1)
+
+    if len(name_parts) == 2:
+        new_filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}"
+    else:
+        new_filename = f"{original_name}_{timestamp}"
+
+    file.filename = new_filename
+
     from frappe.handler import upload_file
 
     file_doc = upload_file()
