@@ -118,10 +118,17 @@ function toSvgPath(points: { x: number; y: number }[]): string {
         .join(' ');
 }
 
+const UploadIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+);
+
 /* ── Component ── */
 const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const commentInputRef = useRef<HTMLTextAreaElement>(null);
+    const revisionInputRef = useRef<HTMLInputElement>(null);
 
     // Tool state
     const [activeTool, setActiveTool] = useState<ToolMode>('cursor');
@@ -146,9 +153,14 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     const [imageLoaded, setImageLoaded] = useState(false);
     const [comment, setComment] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [uploadingRevision, setUploadingRevision] = useState(false);
+
+    /* ── Mentions state ── */
+    const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+    const [showMentions, setShowMentions] = useState(false);
 
     // Fetch asset
-    const { data: assetData } = useFrappeGetCall<{
+    const { data: assetData, mutate: refreshAsset } = useFrappeGetCall<{
         message: { latest_file: string; asset_title: string; campaign: string; category: string; status: string };
     }>('frappe.client.get', { doctype: 'IMS Marketing Asset', name: assetName });
 
@@ -163,12 +175,67 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
     const { call: submitAnnotation } = useFrappePostCall('ims.api.submit_annotation');
 
+    // Fetch users for mention
+    const { data: mentionData } = useFrappeGetCall<{ message: { users: { name: string; full_name: string; user_image?: string }[] } }>(
+        'ims.api.get_users_for_mention',
+        { query: mentionQuery || '' },
+        showMentions && mentionQuery !== null ? `mentions-${mentionQuery}` : null
+    );
+
+    const mentionUsers = mentionData?.message?.users || [];
+
+    // We can't use useFrappePostCall for file uploads easily with standard fetch wrapper if it expects JSON
+    // But frappe-react-sdk usually handles it if body is FormData? 
+    // Let's rely on standard fetch or check if we can mock it.
+    // Actually, let's just use standard fetch for the file upload to be safe and explicit.
+
+    const handleRevisionUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return;
+        const file = e.target.files[0];
+        setUploadingRevision(true);
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('marketing_asset', assetName);
+        formData.append('notes', 'Uploaded via Dashboard');
+
+        // CSRF handling if needed, but in standard Desk app session it often works with cookies.
+        // If we are in a pure React app served by Frappe, cookies are present.
+
+        try {
+            const res = await fetch('/api/method/ims.api.upload_revision', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Frappe-CSRF-Token': (window as any).csrf_token || '',
+                }
+            });
+            const data = await res.json();
+            if (data.message && data.message.status === 'success') {
+                refreshAsset(); // Update the image
+                refreshAnnotations(); // Reload annotations (might be empty/different for new revision)
+                refreshWorkflow();
+                alert('New revision uploaded successfully.');
+            } else {
+                console.error('Upload failed', data);
+                alert('Upload failed: ' + (data.message || data.exception));
+            }
+        } catch (err) {
+            console.error('Upload error', err);
+            alert('An error occurred during upload.');
+        } finally {
+            setUploadingRevision(false);
+            if (revisionInputRef.current) revisionInputRef.current.value = '';
+        }
+    };
+
     const asset = assetData?.message;
     const annotations = annotationData?.message?.annotations || [];
     const currentWorkflowState = workflowData?.message?.current_state || asset?.status;
 
     const fileUrl = asset?.latest_file || '';
     const isVideo = isVideoFile(fileUrl);
+    const isDraft = currentWorkflowState === 'Draft' || currentWorkflowState === 'Rejected';
 
     /* ── Coordinate helper ── */
     const getPercentCoords = useCallback(
@@ -301,6 +368,44 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
         [handleSubmitComment]
     );
 
+    const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const val = e.target.value;
+        setComment(val);
+
+        const cursor = e.target.selectionStart;
+        const textBefore = val.slice(0, cursor);
+        const match = textBefore.match(/@([a-zA-Z0-9._]*)$/);
+
+        if (match) {
+            setMentionQuery(match[1]);
+            setShowMentions(true);
+        } else {
+            setShowMentions(false);
+            setMentionQuery(null);
+        }
+    };
+
+    const handleSelectMention = (user: { name: string; full_name: string }) => {
+        if (!commentInputRef.current) return;
+        const cursor = commentInputRef.current.selectionStart;
+        const textBefore = comment.slice(0, cursor);
+        const textAfter = comment.slice(cursor);
+        const match = textBefore.match(/@([a-zA-Z0-9._]*)$/);
+
+        if (match && match.index !== undefined) {
+            const newText = textBefore.slice(0, match.index) + `@${user.name} ` + textAfter;
+            setComment(newText);
+            setShowMentions(false);
+            setMentionQuery(null);
+            setTimeout(() => {
+                if (commentInputRef.current) {
+                    commentInputRef.current.focus();
+                }
+            }, 50);
+        }
+    };
+
+
     /* ── Rect selection preview ── */
     const selectionRect =
         isDragging && dragStart && dragCurrent
@@ -352,6 +457,13 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
     return (
         <div className="asset-viewer">
+            <input
+                type="file"
+                ref={revisionInputRef}
+                style={{ display: 'none' }}
+                onChange={handleRevisionUpload}
+                accept="image/*,video/*"
+            />
             {/* ── Header ── */}
             <div className="asset-header">
                 <div className="asset-header-left">
@@ -364,6 +476,16 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                     <span className="asset-type-badge">{currentWorkflowState || asset.category || 'Asset'}</span>
                 </div>
                 <div className="asset-header-right">
+                    {uploadingRevision ? (
+                        <button className="asset-action-btn" disabled>
+                            <div className="loading-spinner-sm" style={{ width: 14, height: 14, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                            <span>Uploading...</span>
+                        </button>
+                    ) : isDraft && (
+                        <button className="asset-action-btn" onClick={() => revisionInputRef.current?.click()}>
+                            <UploadIcon /><span>New Version</span>
+                        </button>
+                    )}
                     <button className="asset-action-btn" onClick={handleShare}>
                         <ShareIcon /><span>Share</span>
                     </button>
@@ -591,13 +713,26 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                                 <button className="pin-clear" onClick={() => setPendingAnnotation(null)}>✕</button>
                             </div>
                         )}
-                        <div className="comment-input-row">
+                        <div className="comment-input-row" style={{ position: 'relative' }}>
+                            {showMentions && mentionUsers.length > 0 && (
+                                <div className="mentions-list">
+                                    {mentionUsers.map(u => (
+                                        <div key={u.name} className="mention-item" onClick={() => handleSelectMention(u)}>
+                                            <img src={u.user_image || 'https://ui-avatars.com/api/?name=' + u.full_name} className="mention-avatar" alt={u.full_name} />
+                                            <div>
+                                                <div className="mention-name">{u.full_name}</div>
+                                                <div className="mention-id">@{u.name}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                             <textarea
                                 ref={commentInputRef}
                                 className="comment-textarea"
                                 placeholder="Add a comment... Type @ to mention"
                                 value={comment}
-                                onChange={(e) => setComment(e.target.value)}
+                                onChange={handleCommentChange}
                                 onKeyDown={handleKeyDown}
                                 rows={1}
                             />

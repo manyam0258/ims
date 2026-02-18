@@ -529,12 +529,67 @@ def submit_annotation(
     revision.save(ignore_permissions=False)
     frappe.db.commit()
 
+    # Process mentions
+    process_mentions(comment, marketing_asset, frappe.session.user)
+
     return {
         "status": "success",
         "message": _("Annotation saved successfully."),
         "annotation": annotation,
         "revision": latest_revision,
     }
+
+
+def process_mentions(comment: str, asset_name: str, sender: str):
+    """Find @mentions and create notifications."""
+    import re
+
+    # Match @username (alphanumeric, dots, underscores)
+    mentions = set(re.findall(r"@([a-zA-Z0-9._]+)", comment))
+
+    if not mentions:
+        return
+
+    asset_title = frappe.db.get_value("IMS Marketing Asset", asset_name, "asset_title")
+    sender_fullname = frappe.utils.get_fullname(sender)
+
+    for username in mentions:
+        if username == sender or not frappe.db.exists("User", username):
+            continue
+
+        # Create Notification Log
+        subject = f"{sender_fullname} mentioned you in {asset_title}"
+
+        # Check if already notified recently? No, always notify for mentions.
+        notification = frappe.get_doc(
+            {
+                "doctype": "Notification Log",
+                "subject": subject,
+                "for_user": username,
+                "type": "Mention",
+                "from_user": sender,
+                "document_type": "IMS Marketing Asset",
+                "document_name": asset_name,
+                "email_content": f"<p>{comment}</p>",
+            }
+        )
+        notification.insert(ignore_permissions=True)
+
+
+@frappe.whitelist(allow_guest=False)
+def get_users_for_mention(query: str = "") -> dict:
+    """Search for users to mention."""
+    users = frappe.db.get_list(
+        "User",
+        filters={
+            "enabled": 1,
+            "name": ["not in", ["Administrator", "Guest"]],
+            "full_name": ["like", f"%{query}%"],
+        },
+        fields=["name", "full_name", "user_image"],
+        limit=20,
+    )
+    return {"status": "success", "users": users}
 
 
 @frappe.whitelist(allow_guest=False)
@@ -637,6 +692,10 @@ def apply_workflow_transition(marketing_asset: str, action: str) -> dict:
         # Determine next transitions
         next_transitions = get_workflow_transitions(marketing_asset)["transitions"]
 
+        # Check for Final Approval state
+        if doc.workflow_state in ["Approved", "Final Sign-off"]:
+            export_on_approval(doc)
+
         return {
             "status": "success",
             "message": _("Workflow action '{0}' applied successfully.").format(action),
@@ -646,6 +705,42 @@ def apply_workflow_transition(marketing_asset: str, action: str) -> dict:
     except Exception as e:
         frappe.log_error(f"Workflow Transition Failed for {marketing_asset}: {str(e)}")
         return {"status": "error", "message": str(e)}
+
+
+def export_on_approval(asset_doc):
+    """
+    Handle export logic when asset is approved.
+    1. Make the latest file public if it's private.
+    2. (Placeholder) Upload to external S3/Drive if configured.
+    """
+    if not asset_doc.latest_file:
+        return
+
+    # 1. Make file public
+    file_doc = frappe.get_doc("File", {"file_url": asset_doc.latest_file})
+    if file_doc and file_doc.is_private:
+        file_doc.is_private = 0
+        file_doc.save(ignore_permissions=True)
+        frappe.msgprint(_("Asset file has been made public."))
+
+    # 2. Log export
+    # In a real scenario, this would use boto3 or google-api-python-client
+    # to upload to a specific external bucket/folder.
+    frappe.log_error(
+        f"Exporting {asset_doc.name} to external storage (Simulation)", "IMS Export"
+    )
+
+    # Add a comment to the asset
+    comment = frappe.get_doc(
+        {
+            "doctype": "Comment",
+            "comment_type": "Info",
+            "reference_doctype": "IMS Marketing Asset",
+            "reference_name": asset_doc.name,
+            "content": "Asset exported to external storage upon approval.",
+        }
+    )
+    comment.insert(ignore_permissions=True)
 
 
 @frappe.whitelist(allow_guest=False)
@@ -676,4 +771,63 @@ def get_project_details(name: str) -> dict:
             "owner": frappe.utils.get_fullname(project.owner),
         },
         "assets": assets,
+    }
+
+
+@frappe.whitelist(allow_guest=False)
+def upload_revision(marketing_asset: str, notes: str = "") -> dict:
+    """Upload a new file version for an existing asset."""
+    if not frappe.db.exists("IMS Marketing Asset", marketing_asset):
+        frappe.throw(_("Asset not found"), frappe.DoesNotExistError)
+
+    # Check for file
+    if "file" not in frappe.request.files:
+        frappe.throw(_("Please attach a file"))
+
+    file = frappe.request.files["file"]
+    from frappe.handler import upload_file
+
+    file_doc = upload_file()
+    file_url = file_doc.file_url
+
+    if not file_doc.is_private:
+        file_doc.is_private = 1
+        file_doc.save(ignore_permissions=True)
+
+    # Get latest revision number
+    latest_rev_num = (
+        frappe.db.get_value(
+            "IMS Asset Revision",
+            {"marketing_asset": marketing_asset},
+            "revision_number",
+            order_by="revision_number DESC",
+        )
+        or 0
+    )
+
+    # Create new revision
+    revision = frappe.get_doc(
+        {
+            "doctype": "IMS Asset Revision",
+            "marketing_asset": marketing_asset,
+            "revision_file": file_url,
+            "revision_number": latest_rev_num + 1,
+            "revision_notes": notes,
+            "annotations": "[]",  # Start clean for new image
+            "created_by": frappe.session.user,
+        }
+    )
+    revision.insert(ignore_permissions=True)
+
+    # Update parent asset
+    asset = frappe.get_doc("IMS Marketing Asset", marketing_asset)
+    asset.latest_file = file_url
+    asset.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return {
+        "status": "success",
+        "message": _("New revision uploaded successfully"),
+        "file_url": file_url,
+        "revision": revision.revision_number,
     }
