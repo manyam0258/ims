@@ -248,4 +248,7 @@ app_license = "gpl-3.0"
 # ignore_translatable_strings_from = []
 
 
-website_route_rules = [{'from_route': '/ims-dashboard/<path:app_path>', 'to_route': 'ims-dashboard'},]
+website_route_rules = [
+    {"from_route": "/ims-dashboard/<path:app_path>", "to_route": "ims-dashboard"},
+    {"from_route": "/ims-dashboard", "to_route": "ims-dashboard"},
+]
