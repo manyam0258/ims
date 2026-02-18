@@ -1,5 +1,6 @@
 import React from 'react';
 import { useFrappeGetCall } from 'frappe-react-sdk';
+import { WorkflowMenu } from './WorkflowMenu';
 
 interface DashboardSummary {
     draft: number;
@@ -19,6 +20,7 @@ interface RecentAsset {
     category: string;
     latest_file: string;
     creation: string;
+    asset_title_truncated?: string;
 }
 
 interface RecentUpload {
@@ -47,13 +49,13 @@ const statusColors: Record<string, string> = {
 };
 
 const Dashboard: React.FC<DashboardProps> = ({ onAssetClick, onNavigate, refreshKey }) => {
-    const { data: summaryData } = useFrappeGetCall<{ message: DashboardSummary }>(
+    const { data: summaryData, mutate: refreshSummary } = useFrappeGetCall<{ message: DashboardSummary }>(
         'ims.api.get_dashboard_summary',
         undefined,
         `dashboard-summary-${refreshKey}`,
     );
 
-    const { data: assetsData } = useFrappeGetCall<{ message: { assets: RecentAsset[] } }>(
+    const { data: assetsData, mutate: refreshAssets } = useFrappeGetCall<{ message: { assets: RecentAsset[] } }>(
         'ims.api.get_recent_assets',
         { limit: 6 },
         `recent-assets-${refreshKey}`,
@@ -93,6 +95,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onAssetClick, onNavigate, refresh
     const isImage = (url: string) => {
         if (!url) return false;
         return /\.(png|jpg|jpeg|gif|svg|webp|bmp)(\?|$)/i.test(url);
+    };
+
+    const handleWorkflowChange = () => {
+        refreshAssets();
+        refreshSummary();
     };
 
     return (
@@ -159,12 +166,19 @@ const Dashboard: React.FC<DashboardProps> = ({ onAssetClick, onNavigate, refresh
                                             <span className="item-meta">{asset.name} · {formatDate(asset.creation)}</span>
                                         </div>
                                     </div>
-                                    <span
-                                        className="status-badge"
-                                        style={{ background: statusColors[asset.status] || '#6b7280' }}
-                                    >
-                                        {asset.status}
-                                    </span>
+                                    <WorkflowMenu
+                                        assetName={asset.name}
+                                        asBadge={true}
+                                        onTransitionComplete={handleWorkflowChange}
+                                        trigger={
+                                            <span
+                                                className="status-badge"
+                                                style={{ background: statusColors[asset.status] || '#6b7280', cursor: 'pointer' }}
+                                            >
+                                                {asset.status}
+                                            </span>
+                                        }
+                                    />
                                 </div>
                             ))
                         )}

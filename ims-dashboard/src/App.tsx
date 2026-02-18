@@ -10,12 +10,14 @@ import AuditLogsPage from './components/AuditLogsPage'
 import SettingsPage from './components/SettingsPage'
 import UploadModal from './components/UploadModal'
 import ImageAnnotator from './components/ImageAnnotator'
+import ProjectDetail from './components/ProjectDetail'
 
 function AppContent() {
 	const { currentUser } = useFrappeAuth();
 	const [activePage, setActivePage] = useState('dashboard');
 	const [uploadOpen, setUploadOpen] = useState(false);
 	const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
+	const [selectedProject, setSelectedProject] = useState<string | null>(null);
 	const [refreshKey, setRefreshKey] = useState(0);
 
 	// Dark mode — persisted in localStorage, defaults to system preference
@@ -48,10 +50,12 @@ function AppContent() {
 	const handleNavigate = useCallback((page: string) => {
 		setActivePage(page);
 		setSelectedAsset(null);
+		setSelectedProject(null);
 	}, []);
 
-	const handleProjectClick = useCallback((_name: string) => {
-		// TODO: navigate to project detail/filter assets by project
+	const handleProjectClick = useCallback((name: string) => {
+		setSelectedProject(name);
+		setActivePage('project-detail');
 	}, []);
 
 	const userName = currentUser
@@ -62,6 +66,16 @@ function AppContent() {
 		if (activePage === 'annotator' && selectedAsset) {
 			return (
 				<ImageAnnotator assetName={selectedAsset} onBack={handleBack} />
+			);
+		}
+
+		if (activePage === 'project-detail' && selectedProject) {
+			return (
+				<ProjectDetail
+					projectName={selectedProject}
+					onBack={() => handleNavigate('projects')}
+					onAssetClick={handleAssetClick}
+				/>
 			);
 		}
 

@@ -92,6 +92,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, dar
                             <a className="dropdown-item" href="/app/user" target="_blank" rel="noopener">
                                 <UserIcon /> View Profile
                             </a>
+                            <a className="dropdown-item" href="/app" target="_blank" rel="noopener">
+                                <LayoutIcon /> Switch to Desk
+                            </a>
                             <a className="dropdown-item" href="/api/method/logout" >
                                 <LogoutIcon /> Sign Out
                             </a>
@@ -133,6 +136,9 @@ function UserIcon() {
 }
 function LogoutIcon() {
     return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>;
+}
+function LayoutIcon() {
+    return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>;
 }
 
 export default Sidebar;

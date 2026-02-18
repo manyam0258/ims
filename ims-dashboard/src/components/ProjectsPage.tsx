@@ -86,7 +86,7 @@ const ProjectsPage: React.FC<ProjectsPageProps> = ({ onProjectClick, refreshKey 
                 ) : (
                     filtered.map((project) => (
                         <div
-                            className="project-card"
+                            className="project-card clickable"
                             key={project.name}
                             onClick={() => onProjectClick(project.name)}
                         >

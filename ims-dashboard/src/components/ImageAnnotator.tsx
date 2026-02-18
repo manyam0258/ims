@@ -1,5 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { useFrappeGetCall, useFrappePostCall } from 'frappe-react-sdk';
+import { WorkflowMenu } from './WorkflowMenu';
 
 /* ── Types ── */
 interface Annotation {
@@ -24,17 +25,9 @@ interface AnnotationData {
     status: string;
 }
 
-interface WorkflowAction {
-    action: string;
-    next_state: string;
-    style: 'primary' | 'danger' | 'default';
-}
-
 interface WorkflowResponse {
     status: string;
     current_state: string;
-    transitions: WorkflowAction[];
-
 }
 
 interface ImageAnnotatorProps {
@@ -66,9 +59,19 @@ const SendIcon = () => (
         <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
     </svg>
 );
-const SortIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="4" y1="6" x2="16" y2="6" /><line x1="4" y1="12" x2="12" y2="12" /><line x1="4" y1="18" x2="8" y2="18" />
+const ChatIcon = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+);
+const WorkflowIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="7" height="7" />
+        <rect x="14" y="3" width="7" height="7" />
+        <rect x="14" y="14" width="7" height="7" />
+        <polyline points="10 6.5 14 6.5" />
+        <polyline points="17.5 10 17.5 14" />
+        <polyline points="6.5 10 6.5 17.5 14 17.5" />
     </svg>
 );
 const CursorIcon = () => (
@@ -153,17 +156,15 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
         'ims.api.get_annotations', { marketing_asset: assetName }
     );
 
-    // Fetch workflow transitions
+    // Fetch workflow transitions (just for current state)
     const { data: workflowData, mutate: refreshWorkflow } = useFrappeGetCall<{ message: WorkflowResponse }>(
         'ims.api.get_workflow_transitions', { marketing_asset: assetName }
     );
 
     const { call: submitAnnotation } = useFrappePostCall('ims.api.submit_annotation');
-    const { call: applyWorkflow } = useFrappePostCall('ims.api.apply_workflow_transition');
 
     const asset = assetData?.message;
     const annotations = annotationData?.message?.annotations || [];
-    const workflowTransitions = workflowData?.message?.transitions || [];
     const currentWorkflowState = workflowData?.message?.current_state || asset?.status;
 
     const fileUrl = asset?.latest_file || '';
@@ -337,16 +338,6 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
         }
     };
 
-    const handleWorkflowAction = async (action: string) => {
-        try {
-            await applyWorkflow({ marketing_asset: assetName, action });
-            refreshWorkflow();
-            // Refresh asset data to update status badge if needed, though we use currentWorkflowState
-        } catch (e) {
-            console.error('Workflow action failed', e);
-        }
-    };
-
     if (!asset) {
         return (
             <div className="annotator-loading">
@@ -373,19 +364,19 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                     <span className="asset-type-badge">{currentWorkflowState || asset.category || 'Asset'}</span>
                 </div>
                 <div className="asset-header-right">
-                    {workflowTransitions.map((t) => (
-                        <button
-                            key={t.action}
-                            className={`asset-action-btn ${t.style === 'primary' ? 'asset-action-primary' : t.style === 'danger' ? 'asset-action-danger' : ''}`}
-                            onClick={() => handleWorkflowAction(t.action)}
-                        >
-                            {t.action}
-                        </button>
-                    ))}
-                    <div className="header-divider" style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 8px' }} />
                     <button className="asset-action-btn" onClick={handleShare}>
                         <ShareIcon /><span>Share</span>
                     </button>
+                    <WorkflowMenu
+                        assetName={assetName}
+                        onTransitionComplete={refreshWorkflow}
+                        trigger={
+                            <button className="asset-action-btn asset-action-primary">
+                                <WorkflowIcon /><span>Workflow</span>
+                            </button>
+                        }
+                    />
+                    <div className="header-divider" style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 8px' }} />
                     <button className="asset-action-btn" onClick={handleDownload}>
                         <DownloadIcon /><span>Download</span>
                     </button>
@@ -549,8 +540,8 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                 {/* Comments panel */}
                 <div className="comments-panel">
                     <div className="comments-header">
-                        <h3>Comments ({annotations.length})</h3>
-                        <button className="comments-sort-btn"><SortIcon /><span>Recent</span></button>
+                        <h3><span style={{ verticalAlign: 'middle', marginRight: 8 }}><ChatIcon /></span>Comments ({annotations.length})</h3>
+                        {/* Replaced 'Sort' with hidden or minimal UI if needed, removing the 'weird' button */}
                     </div>
 
                     <div className="comments-list">

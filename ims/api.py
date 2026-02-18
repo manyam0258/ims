@@ -590,14 +590,25 @@ def get_workflow_transitions(marketing_asset: str) -> dict:
     # Map transitions to a cleaner format for frontend
     actions = []
     for t in transitions:
+        # Handle both object and dict access for robustness
+        action = t.get("action") if isinstance(t, dict) else getattr(t, "action", None)
+        next_state = (
+            t.get("next_state")
+            if isinstance(t, dict)
+            else getattr(t, "next_state", None)
+        )
+
+        if not action:
+            continue
+
         actions.append(
             {
-                "action": t.action,
-                "next_state": t.next_state,
+                "action": action,
+                "next_state": next_state,
                 "style": (
                     "primary"
-                    if t.action.startswith("Approve") or t.action.startswith("Submit")
-                    else "danger" if t.action == "Reject" else "default"
+                    if action.startswith("Approve") or action.startswith("Submit")
+                    else "danger" if action == "Reject" else "default"
                 ),
             }
         )
@@ -635,3 +646,34 @@ def apply_workflow_transition(marketing_asset: str, action: str) -> dict:
     except Exception as e:
         frappe.log_error(f"Workflow Transition Failed for {marketing_asset}: {str(e)}")
         return {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist(allow_guest=False)
+def get_project_details(name: str) -> dict:
+    """Get project details and linked assets."""
+    if not frappe.db.exists("IMS Project", name):
+        return {"status": "error", "message": _("Project not found")}
+
+    project = frappe.get_doc("IMS Project", name)
+
+    # Get linked assets
+    assets = frappe.db.get_list(
+        "IMS Marketing Asset",
+        filters={"project": name},
+        fields=["name", "asset_title", "status", "latest_file", "category", "creation"],
+        order_by="modified DESC",
+    )
+
+    return {
+        "status": "success",
+        "project": {
+            "name": project.name,
+            "project_title": project.project_title,
+            "status": project.status,
+            "description": project.description,
+            "due_date": project.due_date,
+            "creation": project.creation,
+            "owner": frappe.utils.get_fullname(project.owner),
+        },
+        "assets": assets,
+    }
