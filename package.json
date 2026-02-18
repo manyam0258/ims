@@ -1,0 +1,16 @@
+{
+  "name": "ims",
+  "version": "1.0.0",
+  "description": "IMS Workflow app for marketing material",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "cd ims-dashboard && yarn install",
+    "dev": "cd ims-dashboard && yarn dev",
+    "build": "cd ims-dashboard && yarn build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
