@@ -10,6 +10,47 @@ app_license = "gpl-3.0"
 
 # required_apps = []
 
+# Fixtures
+# --------
+fixtures = [
+    {
+        "dt": "Workflow",
+        "filters": [["name", "=", "IMS Asset Approval"]],
+    },
+    {
+        "dt": "Workflow State",
+        "filters": [
+            [
+                "name",
+                "in",
+                [
+                    "Draft",
+                    "Peer Review",
+                    "HOD Approval",
+                    "Final Sign-off",
+                    "Approved",
+                    "Rejected",
+                ],
+            ]
+        ],
+    },
+    {
+        "dt": "Role",
+        "filters": [
+            [
+                "name",
+                "in",
+                [
+                    "Graphic Designer",
+                    "Peer Reviewer",
+                    "Dept. Head",
+                    "CMO",
+                ],
+            ]
+        ],
+    },
+]
+
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
 # 	{

@@ -22,6 +22,22 @@ A unified dashboard where assets are uploaded, reviewed via visual annotations, 
 
 ---
 
+### **Reference app which as same functionality**
+
+https://github.com/BuildWithHussain/vms
+we can consider the same screens as above app, but this app should work for the Image Management System.
+
+#### Feature that vms have
+Project Management — Organize assets into projects with status tracking and due dates
+
+Folder System — Organize assets within projects using folders with drag-and-drop between them
+Image Review —  comments, threaded replies, drawing annotations (Fabric.js), and public review links via shareable tokens
+
+Asset Categories — Classify assets as Asset, For Review, or Deliverable with filtered tab views
+Audit Logs — Track uploads, downloads, renames, and deletions with user attribution
+User Management — Invite team members with the Video Manager role; profile and settings management
+Dark Mode — System-aware theme toggle
+
 ## **2\. User Personas**
 
 | Persona | Role | Primary Goal |

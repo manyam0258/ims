@@ -1,0 +1,111 @@
+{
+    "actions": [],
+    "allow_rename": 0,
+    "autoname": "IMS-REV-.YYYY.-.#####.",
+    "creation": "2026-02-18 11:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "details_section",
+        "marketing_asset",
+        "revision_number",
+        "column_break_1",
+        "revision_file",
+        "annotations_section",
+        "annotations",
+        "notes_section",
+        "revision_notes",
+        "amended_from"
+    ],
+    "fields": [
+        {
+            "fieldname": "details_section",
+            "fieldtype": "Section Break",
+            "label": "Revision Details"
+        },
+        {
+            "fieldname": "marketing_asset",
+            "fieldtype": "Link",
+            "label": "Marketing Asset",
+            "options": "IMS Marketing Asset",
+            "reqd": 1,
+            "in_list_view": 1,
+            "in_standard_filter": 1
+        },
+        {
+            "fieldname": "revision_number",
+            "fieldtype": "Int",
+            "label": "Revision Number",
+            "read_only": 1,
+            "in_list_view": 1,
+            "bold": 1
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "revision_file",
+            "fieldtype": "Attach Image",
+            "label": "Revision File",
+            "reqd": 1
+        },
+        {
+            "fieldname": "annotations_section",
+            "fieldtype": "Section Break",
+            "label": "Annotations"
+        },
+        {
+            "fieldname": "annotations",
+            "fieldtype": "JSON",
+            "label": "Annotations",
+            "description": "Stores annotation coordinates and comments as JSON array: [{x, y, width, height, comment, author, timestamp}]"
+        },
+        {
+            "fieldname": "notes_section",
+            "fieldtype": "Section Break",
+            "label": "Notes"
+        },
+        {
+            "fieldname": "revision_notes",
+            "fieldtype": "Small Text",
+            "label": "Revision Notes"
+        },
+        {
+            "fieldname": "amended_from",
+            "fieldtype": "Link",
+            "label": "Amended From",
+            "no_copy": 1,
+            "options": "IMS Asset Revision",
+            "print_hide": 1,
+            "read_only": 1
+        }
+    ],
+    "image_field": "revision_file",
+    "index_web_pages_for_search": 0,
+    "links": [],
+    "modified": "2026-02-18 11:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Image Management System",
+    "name": "IMS Asset Revision",
+    "naming_rule": "Expression (old style)",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "creation",
+    "sort_order": "DESC",
+    "states": [],
+    "track_changes": 1
+}

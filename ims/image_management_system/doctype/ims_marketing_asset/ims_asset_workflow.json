@@ -1,0 +1,98 @@
+[
+    {
+        "doctype": "Workflow",
+        "name": "IMS Asset Approval",
+        "document_type": "IMS Marketing Asset",
+        "is_active": 1,
+        "send_email_alert": 0,
+        "workflow_state_field": "workflow_state",
+        "states": [
+            {
+                "state": "Draft",
+                "doc_status": 0,
+                "allow_edit": "System Manager",
+                "is_optional_state": 0
+            },
+            {
+                "state": "Peer Review",
+                "doc_status": 0,
+                "allow_edit": "System Manager",
+                "is_optional_state": 0
+            },
+            {
+                "state": "HOD Approval",
+                "doc_status": 0,
+                "allow_edit": "System Manager",
+                "is_optional_state": 0
+            },
+            {
+                "state": "Final Sign-off",
+                "doc_status": 0,
+                "allow_edit": "System Manager",
+                "is_optional_state": 0
+            },
+            {
+                "state": "Approved",
+                "doc_status": 0,
+                "allow_edit": "System Manager",
+                "is_optional_state": 0
+            },
+            {
+                "state": "Rejected",
+                "doc_status": 0,
+                "allow_edit": "System Manager",
+                "is_optional_state": 0
+            }
+        ],
+        "transitions": [
+            {
+                "state": "Draft",
+                "action": "Submit for Peer Review",
+                "next_state": "Peer Review",
+                "allowed": "System Manager"
+            },
+            {
+                "state": "Peer Review",
+                "action": "Approve for HOD Review",
+                "next_state": "HOD Approval",
+                "allowed": "System Manager"
+            },
+            {
+                "state": "Peer Review",
+                "action": "Reject",
+                "next_state": "Rejected",
+                "allowed": "System Manager"
+            },
+            {
+                "state": "HOD Approval",
+                "action": "Approve for Final Sign-off",
+                "next_state": "Final Sign-off",
+                "allowed": "System Manager"
+            },
+            {
+                "state": "HOD Approval",
+                "action": "Reject",
+                "next_state": "Rejected",
+                "allowed": "System Manager"
+            },
+            {
+                "state": "Final Sign-off",
+                "action": "Approve",
+                "next_state": "Approved",
+                "allowed": "System Manager"
+            },
+            {
+                "state": "Final Sign-off",
+                "action": "Reject",
+                "next_state": "Rejected",
+                "allowed": "System Manager"
+            },
+            {
+                "state": "Rejected",
+                "action": "Revise",
+                "next_state": "Draft",
+                "allowed": "System Manager"
+            }
+        ]
+    }
+]
