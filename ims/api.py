@@ -617,8 +617,8 @@ def get_users_for_mention(query: str = "") -> dict:
 
 
 @frappe.whitelist(allow_guest=False)
-def get_annotations(marketing_asset: str) -> dict:
-    """Fetch all annotations for the latest revision of a marketing asset."""
+def get_annotations(marketing_asset: str, revision_number: int = None) -> dict:
+    """Fetch annotations for a specific or latest revision of a marketing asset."""
     if not frappe.db.exists("IMS Marketing Asset", marketing_asset):
         frappe.throw(
             _("Marketing Asset {0} does not exist.").format(marketing_asset),
@@ -627,15 +627,32 @@ def get_annotations(marketing_asset: str) -> dict:
 
     frappe.has_permission("IMS Marketing Asset", "read", marketing_asset, throw=True)
 
-    latest_revision = frappe.db.get_value(
-        "IMS Asset Revision",
-        {"marketing_asset": marketing_asset},
-        ["name", "revision_number", "revision_file", "annotations", "content_brief"],
-        order_by="revision_number DESC",
-        as_dict=True,
-    )
+    filters = {"marketing_asset": marketing_asset}
+    if revision_number:
+        filters["revision_number"] = int(revision_number)
 
-    if not latest_revision:
+    revision_list = frappe.get_all(
+        "IMS Asset Revision",
+        filters=filters,
+        fields=[
+            "name",
+            "revision_number",
+            "revision_file",
+            "annotations",
+            "content_brief",
+        ],
+        order_by="revision_number DESC",
+        limit=1,
+    )
+    revision_data = revision_list[0] if revision_list else None
+
+    # Permission check for revision upload
+    can_upload = False
+    asset_status = frappe.db.get_value("IMS Marketing Asset", marketing_asset, "status")
+    if asset_status in ["Draft", "Rejected"]:
+        can_upload = True
+
+    if not revision_data:
         # No revision yet — fall back to asset description
         asset_desc = frappe.db.get_value(
             "IMS Marketing Asset", marketing_asset, "description"
@@ -647,15 +664,16 @@ def get_annotations(marketing_asset: str) -> dict:
             "content_brief": asset_desc or "",
         }
 
-    annotations = json.loads(latest_revision.annotations or "[]")
+    annotations = json.loads(revision_data.get("annotations") or "[]")
 
     return {
         "status": "success",
         "annotations": annotations,
-        "revision": latest_revision.name,
-        "revision_number": latest_revision.revision_number,
-        "revision_file": latest_revision.revision_file,
-        "content_brief": latest_revision.content_brief or "",
+        "revision": revision_data.get("name"),
+        "revision_number": revision_data.get("revision_number"),
+        "revision_file": revision_data.get("revision_file"),
+        "content_brief": revision_data.get("content_brief") or "",
+        "can_upload_revision": can_upload,
     }
 
 
@@ -839,18 +857,19 @@ def upload_revision(marketing_asset: str, notes: str = "") -> dict:
     file_url = file_doc.file_url
 
     # Get latest revision (number + content_brief to carry forward)
-    prev_revision = frappe.db.get_value(
+    prev_list = frappe.get_all(
         "IMS Asset Revision",
-        {"marketing_asset": marketing_asset},
-        ["revision_number", "content_brief"],
+        filters={"marketing_asset": marketing_asset},
+        fields=["revision_number", "content_brief"],
         order_by="revision_number DESC",
-        as_dict=True,
+        limit=1,
     )
-    latest_rev_num = prev_revision.revision_number if prev_revision else 0
-    prev_content_brief = prev_revision.content_brief if prev_revision else ""
+    prev_revision = prev_list[0] if prev_list else None
+    latest_rev_num = prev_revision.get("revision_number") if prev_revision else 0
+    prev_content_brief = prev_revision.get("content_brief") if prev_revision else ""
 
     # Create new revision — carry forward content_brief from previous
-    revision = frappe.get_doc(
+    revision_doc = frappe.get_doc(
         {
             "doctype": "IMS Asset Revision",
             "marketing_asset": marketing_asset,
@@ -862,7 +881,7 @@ def upload_revision(marketing_asset: str, notes: str = "") -> dict:
             "content_brief": prev_content_brief or "",
         }
     )
-    revision.insert(ignore_permissions=True)
+    revision_doc.insert(ignore_permissions=True)
 
     # Update parent asset
     asset = frappe.get_doc("IMS Marketing Asset", marketing_asset)
@@ -874,31 +893,97 @@ def upload_revision(marketing_asset: str, notes: str = "") -> dict:
         "status": "success",
         "message": _("New revision uploaded successfully"),
         "file_url": file_url,
-        "revision": revision.revision_number,
+        "revision": revision_doc.get("revision_number"),
+    }
+
+
+@frappe.whitelist(allow_guest=False)
+def save_content_brief(
+    marketing_asset: str = None, revision_name: str = None, content_brief: str = ""
+) -> dict:
+    """Update content brief on a specific revision or the latest one."""
+    if not revision_name and not marketing_asset:
+        frappe.throw(_("Missing revision_name or marketing_asset"))
+
+    if not revision_name:
+        revision_name = frappe.db.get_value(
+            "IMS Asset Revision",
+            {"marketing_asset": marketing_asset},
+            "name",
+            order_by="revision_number DESC",
+        )
+
+    if not revision_name:
+        # Create revision if missing
+        asset_doc = frappe.get_doc("IMS Marketing Asset", marketing_asset)
+        if not asset_doc.latest_file:
+            frappe.throw(_("No file associated with this asset."))
+
+        rev = frappe.get_doc(
+            {
+                "doctype": "IMS Asset Revision",
+                "marketing_asset": marketing_asset,
+                "revision_file": asset_doc.latest_file,
+                "annotations": "[]",
+                "content_brief": content_brief,
+                "revision_notes": "Created via content brief update.",
+            }
+        )
+        rev.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return {
+            "status": "success",
+            "message": _("Content brief saved in new revision."),
+            "revision": rev.name,
+        }
+
+    # Derive marketing_asset if missing
+    if not marketing_asset:
+        marketing_asset = frappe.db.get_value(
+            "IMS Asset Revision", revision_name, "marketing_asset"
+        )
+
+    # Permission check via parent asset
+    frappe.has_permission("IMS Marketing Asset", "read", marketing_asset, throw=True)
+
+    # Fetch doc and update using robust doc-based save
+    try:
+        rev_doc = frappe.get_doc("IMS Asset Revision", revision_name)
+        rev_doc.content_brief = content_brief
+        rev_doc.save(ignore_permissions=True)
+        frappe.db.commit()
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), _("Content Brief Save Error"))
+        return {"status": "error", "message": str(e)}
+
+    return {
+        "status": "success",
+        "message": _("Content brief updated successfully."),
+        "revision": revision_name,
     }
 
 
 @frappe.whitelist(allow_guest=False)
 def update_content_brief(revision_name: str, content_brief: str = "") -> dict:
-    """Update content brief on a revision (for reviewer suggestions)."""
-    if not frappe.db.exists("IMS Asset Revision", revision_name):
-        frappe.throw(
-            _("Revision {0} does not exist.").format(revision_name),
-            frappe.DoesNotExistError,
-        )
+    """Old mapping for compatibility with built frontend assets."""
+    return save_content_brief(revision_name=revision_name, content_brief=content_brief)
 
-    # Permission check via parent asset
-    marketing_asset = frappe.db.get_value(
-        "IMS Asset Revision", revision_name, "marketing_asset"
-    )
-    frappe.has_permission("IMS Marketing Asset", "write", marketing_asset, throw=True)
 
-    frappe.db.set_value(
-        "IMS Asset Revision", revision_name, "content_brief", content_brief
+@frappe.whitelist(allow_guest=False)
+def fix_all_files():
+    """Diagnostic: Make all IMS Asset Revision files public."""
+    files = frappe.get_all(
+        "File",
+        filters={"attached_to_doctype": "IMS Asset Revision", "is_private": 1},
+        fields=["name", "file_url"],
     )
+
+    count = 0
+    for f in files:
+        if f.file_url.startswith("/private/"):
+            new_url = f.file_url.replace("/private/", "/")
+            frappe.db.set_value("File", f.name, {"is_private": 0, "file_url": new_url})
+            count += 1
+
     frappe.db.commit()
-
-    return {
-        "status": "success",
-        "message": _("Content brief updated successfully."),
-    }
+    return {"status": "success", "message": f"Fixed {count} files."}

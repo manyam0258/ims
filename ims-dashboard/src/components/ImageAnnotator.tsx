@@ -26,7 +26,19 @@ interface AnnotationData {
     revision_file?: string;
     status: string;
     content_brief?: string;
+    can_upload_revision?: boolean;
 }
+
+interface Revision {
+    name: string;
+    revision_number: number;
+    revision_file: string;
+    revision_notes?: string;
+    creation: string;
+    owner: string;
+}
+
+type SidebarTab = 'comments' | 'history';
 
 interface WorkflowResponse {
     status: string;
@@ -127,14 +139,22 @@ const UploadIcon = () => (
     </svg>
 );
 
+const HistoryIcon = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+    </svg>
+);
+
 /* ── Component ── */
 const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const commentInputRef = useRef<HTMLTextAreaElement>(null);
     const revisionInputRef = useRef<HTMLInputElement>(null);
 
-    // Tool state
+    // Tool & Sidebar state
     const [activeTool, setActiveTool] = useState<ToolMode>('cursor');
+    const [sidebarTab, setSidebarTab] = useState<SidebarTab>('comments');
+    const [activeRevisionNum, setActiveRevisionNum] = useState<number | undefined>(undefined);
 
     // Rect drag state
     const [isDragging, setIsDragging] = useState(false);
@@ -168,8 +188,14 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     }>('frappe.client.get', { doctype: 'IMS Marketing Asset', name: assetName });
 
     const { data: annotationData, mutate: refreshAnnotations } = useFrappeGetCall<{ message: AnnotationData }>(
-        'ims.api.get_annotations', { marketing_asset: assetName }
+        'ims.api.get_annotations', { marketing_asset: assetName, revision_number: activeRevisionNum }
     );
+
+    // Fetch revision history
+    const { data: revisionHistory } = useFrappeGetCall<{ message: { revisions: Revision[] } }>(
+        'ims.api.get_revision_history', { marketing_asset: assetName }
+    );
+    const revisions = revisionHistory?.message?.revisions || [];
 
     // Fetch workflow transitions (just for current state)
     const { data: workflowData, mutate: refreshWorkflow } = useFrappeGetCall<{ message: WorkflowResponse }>(
@@ -177,6 +203,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     );
 
     const { call: submitAnnotation } = useFrappePostCall('ims.api.submit_annotation');
+    const { call: saveBriefApi } = useFrappePostCall('ims.api.save_content_brief');
 
     // Fetch users for mention
     const { data: mentionData } = useFrappeGetCall<{ message: { users: { name: string; full_name: string; user_image?: string }[] } }>(
@@ -236,6 +263,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     const annotations = annotationData?.message?.annotations || [];
     const contentBrief = annotationData?.message?.content_brief || '';
     const revisionName = annotationData?.message?.revision || '';
+    const canUploadRevision = annotationData?.message?.can_upload_revision;
     const currentWorkflowState = workflowData?.message?.current_state || asset?.status;
 
     /* ── Content Brief editing state ── */
@@ -265,29 +293,40 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     }, []);
 
     const handleSaveBrief = useCallback(async () => {
-        if (!revisionName || !briefDirty) return;
+        if (!briefDirty) return;
         setBriefSaving(true);
+
         try {
-            const resp = await fetch('/api/method/ims.api.update_content_brief', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Frappe-CSRF-Token': (window as any).csrf_token || '',
-                },
-                body: JSON.stringify({ revision_name: revisionName, content_brief: editedBrief }),
-            });
-            if (resp.ok) {
+            const payload = {
+                marketing_asset: assetName,
+                revision_name: revisionName || null,
+                content_brief: editedBrief
+            };
+            console.log('Saving content brief...', payload);
+
+            const resp = await saveBriefApi(payload);
+            console.log('Save response:', resp);
+
+            if (resp.status === 'success') {
                 setBriefDirty(false);
                 setBriefSaved(true);
+                // Force a refresh of local data to confirm persistence
+                refreshAnnotations();
                 setTimeout(() => setBriefSaved(false), 3000);
+            } else {
+                console.error('Save failed', resp);
+                alert(`Save failed: ${resp.message || 'Unknown error'}`);
             }
-        } catch { /* silent */ }
+        } catch (err) {
+            console.error('Save error', err);
+            alert('An error occurred while saving the content brief.');
+        }
         setBriefSaving(false);
-    }, [revisionName, editedBrief, briefDirty]);
+    }, [saveBriefApi, assetName, revisionName, editedBrief, briefDirty, refreshAnnotations]);
 
-    const fileUrl = asset?.latest_file || '';
+    const fileUrl = annotationData?.message?.revision_file || asset?.latest_file || '';
     const isVideo = isVideoFile(fileUrl);
-    const isDraft = currentWorkflowState === 'Draft' || currentWorkflowState === 'Rejected';
+    const isViewingLatest = !activeRevisionNum;
 
     /* ── Coordinate helper ── */
     const getPercentCoords = useCallback(
@@ -306,7 +345,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     /* ── Mouse handlers ── */
     const handleMouseDown = useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
-            if (isVideo) return;
+            if (isVideo || !isViewingLatest) return;
             const coords = getPercentCoords(e);
 
             if (activeTool === 'pen') {
@@ -326,7 +365,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
     const handleMouseMove = useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
-            if (isVideo) return;
+            if (isVideo || !isViewingLatest) return;
             const coords = getPercentCoords(e);
 
             if (activeTool === 'pen' && isDrawing) {
@@ -343,7 +382,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
     const handleMouseUp = useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
-            if (isVideo) return;
+            if (isVideo || !isViewingLatest) return;
 
             if (activeTool === 'pen' && isDrawing && currentPath.length > 1) {
                 // Compute bounding box center for the annotation coordinates
@@ -533,7 +572,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                             <div className="loading-spinner-sm" style={{ width: 14, height: 14, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%' }} />
                             <span>Uploading...</span>
                         </button>
-                    ) : isDraft && (
+                    ) : canUploadRevision && (
                         <button className="asset-action-btn" onClick={() => revisionInputRef.current?.click()}>
                             <UploadIcon /><span>New Version</span>
                         </button>
@@ -749,44 +788,105 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                     </div>
                 </div>
 
-                {/* Comments panel */}
+                {/* Sidebar panel */}
                 <div className="comments-panel">
-                    <div className="comments-header">
-                        <h3><span style={{ verticalAlign: 'middle', marginRight: 8 }}><ChatIcon /></span>Comments ({annotations.length})</h3>
-                        {/* Replaced 'Sort' with hidden or minimal UI if needed, removing the 'weird' button */}
+                    <div className="sidebar-tabs">
+                        <button
+                            className={`tab-btn ${sidebarTab === 'comments' ? 'active' : ''}`}
+                            onClick={() => setSidebarTab('comments')}
+                        >
+                            <ChatIcon />
+                            <span>Comments</span>
+                            <span className="tab-count">{annotations.length}</span>
+                        </button>
+                        <button
+                            className={`tab-btn ${sidebarTab === 'history' ? 'active' : ''}`}
+                            onClick={() => setSidebarTab('history')}
+                        >
+                            <HistoryIcon />
+                            <span>History</span>
+                            <span className="tab-count">{revisions.length}</span>
+                        </button>
                     </div>
 
-                    <div className="comments-list">
-                        {annotations.length === 0 ? (
-                            <div className="comments-empty">
-                                <p>No comments yet</p>
-                                <p className="comments-empty-hint">Click on the image to pin a comment, or use the draw tool.</p>
+                    {sidebarTab === 'comments' ? (
+                        <>
+                            <div className="comments-header">
+                                <h3>Team Discussion</h3>
                             </div>
-                        ) : (
-                            annotations.map((ann) => {
-                                const type = getAnnType(ann);
-                                return (
-                                    <div
-                                        key={ann.id}
-                                        className={`comment-card ${hoveredAnnotation === ann.id ? 'highlighted' : ''}`}
-                                        onMouseEnter={() => setHoveredAnnotation(ann.id)}
-                                        onMouseLeave={() => setHoveredAnnotation(null)}
-                                    >
-                                        <div className="comment-avatar">{getInitial(ann.author_name)}</div>
-                                        <div className="comment-body">
-                                            <div className="comment-meta">
-                                                <span className="comment-author">{ann.author_name}</span>
-                                                {type === 'freehand' && <span className="comment-tool-badge">✏️ Drawing</span>}
-                                                {type === 'rect' && <span className="comment-tool-badge">▢ Area</span>}
-                                                <span className="comment-time">{timeAgo(ann.timestamp)}</span>
-                                            </div>
-                                            <p className="comment-text">{ann.comment}</p>
-                                        </div>
+
+                            <div className="comments-list">
+                                {annotations.length === 0 ? (
+                                    <div className="comments-empty">
+                                        <p>No comments yet</p>
+                                        <p className="comments-empty-hint">Click on the image to pin a comment, or use the draw tool.</p>
                                     </div>
-                                );
-                            })
-                        )}
-                    </div>
+                                ) : (
+                                    annotations.map((ann) => {
+                                        const type = getAnnType(ann);
+                                        return (
+                                            <div
+                                                key={ann.id}
+                                                className={`comment-card ${hoveredAnnotation === ann.id ? 'highlighted' : ''}`}
+                                                onMouseEnter={() => setHoveredAnnotation(ann.id)}
+                                                onMouseLeave={() => setHoveredAnnotation(null)}
+                                            >
+                                                <div className="comment-avatar">{getInitial(ann.author_name)}</div>
+                                                <div className="comment-body">
+                                                    <div className="comment-meta">
+                                                        <span className="comment-author">{ann.author_name}</span>
+                                                        {type === 'freehand' && <span className="comment-tool-badge">✏️ Drawing</span>}
+                                                        {type === 'rect' && <span className="comment-tool-badge">▢ Area</span>}
+                                                        <span className="comment-time">{timeAgo(ann.timestamp)}</span>
+                                                    </div>
+                                                    <p className="comment-text">{ann.comment}</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        /* History Tab */
+                        <div className="history-view">
+                            <div className="comments-header">
+                                <h3>Revision History</h3>
+                            </div>
+                            <div className="history-list">
+                                {revisions.length === 0 ? (
+                                    <div className="comments-empty">
+                                        <p>No historical versions found.</p>
+                                    </div>
+                                ) : (
+                                    revisions.map((rev) => (
+                                        <div
+                                            key={rev.name}
+                                            className={`history-card clickable ${activeRevisionNum === rev.revision_number ? 'active' : ''} ${!activeRevisionNum && rev.revision_number === Math.max(...revisions.map(r => r.revision_number)) ? 'active' : ''}`}
+                                            onClick={() => setActiveRevisionNum(rev.revision_number)}
+                                        >
+                                            <div className="history-rev-number">v{rev.revision_number}</div>
+                                            <div className="history-body">
+                                                <div className="history-meta">
+                                                    <span className="history-user">{rev.owner}</span>
+                                                    <span className="history-time">{timeAgo(rev.creation)}</span>
+                                                </div>
+                                                {rev.revision_notes && <p className="history-notes">{rev.revision_notes}</p>}
+                                                <div className="history-actions">
+                                                    <span className="view-link">View this version →</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                            {activeRevisionNum && (
+                                <button className="back-to-latest-btn" onClick={() => setActiveRevisionNum(undefined)}>
+                                    Show Latest Version
+                                </button>
+                            )}
+                        </div>
+                    )}
 
                     {/* Comment input */}
                     <div className="comment-input-area">
