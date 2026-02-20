@@ -2503,13 +2503,31 @@ body {
   position: absolute;
   top: -8px;
   right: 12px;
-  background: var(--success);
-  color: white;
+  background: var(--bg-surface);
+  border: 1.5px solid #10b981;
+  color: #10b981;
   font-size: 0.65rem;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 10px;
-  box-shadow: var(--shadow-sm);
+  font-weight: 800;
+  padding: 1px 10px;
+  border-radius: 12px;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.2);
+  animation: latest-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+}
+
+@keyframes latest-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.6;
+    transform: scale(0.96);
+  }
 }
 
 .asset-media-col {

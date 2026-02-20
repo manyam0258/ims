@@ -1,7 +1,23 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useFrappeGetCall, useFrappePostCall } from 'frappe-react-sdk';
-import ReactQuill from 'react-quill-new';
+import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+import hljs from 'highlight.js';
+import 'highlight.js/styles/github.css';
+
+// Global availability for Quill modules
+if (typeof window !== 'undefined') {
+    (window as any).katex = katex;
+    (window as any).hljs = hljs;
+}
+
+// Ensure underline blot is registered to avoid CI failures
+const Underline = Quill.import('formats/underline');
+if (Underline) {
+    Quill.register('formats/underline', Underline, true);
+}
 import { WorkflowMenu } from './WorkflowMenu';
 
 /* ── Types ── */
@@ -305,7 +321,10 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
             const resp = await saveBriefApi(payload);
             console.log('Save response:', resp);
 
-            if (resp.status === 'success') {
+            // Correctly handle the nested response from frappe-react-sdk
+            const data = resp.message || resp;
+
+            if (data && data.status === 'success') {
                 setBriefDirty(false);
                 setBriefSaved(true);
                 // Force a refresh of local data to confirm persistence
@@ -317,7 +336,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                 // Mutate already handles this by fetching latest if activeRevisionNum is null.
             } else {
                 console.error('Save failed', resp);
-                alert(`Save failed: ${resp.message || 'Unknown error'}`);
+                alert(`Save failed: ${data?.message || 'Unknown error'}`);
             }
         } catch (err) {
             console.error('Save error', err);
@@ -622,7 +641,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                                         className={`history-card ${isActive ? 'active' : ''}`}
                                         onClick={() => setActiveRevisionNum(rev.revision_number)}
                                     >
-                                        {isLatest && <div className="latest-version-badge">LATEST</div>}
+                                        {isLatest && <div className="latest-version-badge">Latest</div>}
                                         <div className="history-card-header">
                                             <span className="history-rev-tag">v{rev.revision_number}</span>
                                             <span className="history-time-tag">{timeAgo(rev.creation)}</span>
