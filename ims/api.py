@@ -689,6 +689,34 @@ def get_users_for_mention(query: str = "") -> dict:
 
 
 @frappe.whitelist(allow_guest=False)
+def get_revision_history(marketing_asset: str) -> dict:
+    """Fetch all revisions for a given marketing asset."""
+    if not frappe.db.exists("IMS Marketing Asset", marketing_asset):
+        frappe.throw(_("Asset not found"), frappe.DoesNotExistError)
+
+    frappe.has_permission("IMS Marketing Asset", "read", marketing_asset, throw=True)
+
+    revisions = frappe.get_all(
+        "IMS Asset Revision",
+        filters={"marketing_asset": marketing_asset},
+        fields=[
+            "name",
+            "revision_number",
+            "revision_file",
+            "revision_notes",
+            "creation",
+            "owner",
+        ],
+        order_by="revision_number DESC",
+    )
+
+    return {
+        "status": "success",
+        "revisions": revisions,
+    }
+
+
+@frappe.whitelist(allow_guest=False)
 def get_annotations(marketing_asset: str, revision_number: int = None) -> dict:
     """Fetch annotations for a specific or latest revision of a marketing asset."""
     if not frappe.db.exists("IMS Marketing Asset", marketing_asset):

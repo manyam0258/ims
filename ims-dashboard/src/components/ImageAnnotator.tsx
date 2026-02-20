@@ -38,7 +38,6 @@ interface Revision {
     owner: string;
 }
 
-type SidebarTab = 'comments' | 'history';
 
 interface WorkflowResponse {
     status: string;
@@ -153,7 +152,6 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
     // Tool & Sidebar state
     const [activeTool, setActiveTool] = useState<ToolMode>('cursor');
-    const [sidebarTab, setSidebarTab] = useState<SidebarTab>('comments');
     const [activeRevisionNum, setActiveRevisionNum] = useState<number | undefined>(undefined);
 
     // Rect drag state
@@ -603,7 +601,55 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
             {/* ── Workspace ── */}
             <div className="asset-workspace">
-                {/* Media column */}
+                {/* 1. Revision History Sidebar (Left) */}
+                <div className="revision-history-sidebar">
+                    <div className="revision-sidebar-header">
+                        <HistoryIcon />
+                        <h3>Revisions</h3>
+                    </div>
+                    <div className="revision-list">
+                        {revisions.length === 0 ? (
+                            <div className="comments-empty">
+                                <p>No historical versions</p>
+                            </div>
+                        ) : (
+                            revisions.map((rev) => {
+                                const isLatest = rev.revision_number === Math.max(...revisions.map(r => r.revision_number));
+                                const isActive = activeRevisionNum === rev.revision_number || (!activeRevisionNum && isLatest);
+                                return (
+                                    <div
+                                        key={rev.name}
+                                        className={`history-card ${isActive ? 'active' : ''}`}
+                                        onClick={() => setActiveRevisionNum(rev.revision_number)}
+                                    >
+                                        {isLatest && <div className="latest-version-badge">LATEST</div>}
+                                        <div className="history-card-header">
+                                            <span className="history-rev-tag">v{rev.revision_number}</span>
+                                            <span className="history-time-tag">{timeAgo(rev.creation)}</span>
+                                        </div>
+                                        <div className="history-card-body">
+                                            <span className="history-owner">{rev.owner}</span>
+                                            {rev.revision_notes && <p className="history-notes">{rev.revision_notes}</p>}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                    {activeRevisionNum && (
+                        <div style={{ padding: '12px', borderTop: '1px solid var(--border-light)' }}>
+                            <button
+                                className="asset-action-btn"
+                                style={{ width: '100%', justifyContent: 'center' }}
+                                onClick={() => setActiveRevisionNum(undefined)}
+                            >
+                                Back to Latest
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* 2. Media column (Center) */}
                 <div className="asset-media-col">
                     {/* Floating toolbar */}
                     {!isVideo && (
@@ -792,105 +838,47 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                     </div>
                 </div>
 
-                {/* Sidebar panel */}
+                {/* 3. Team Discussion Panel (Right) */}
                 <div className="comments-panel">
-                    <div className="sidebar-tabs">
-                        <button
-                            className={`tab-btn ${sidebarTab === 'comments' ? 'active' : ''}`}
-                            onClick={() => setSidebarTab('comments')}
-                        >
+                    <div className="comments-header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <ChatIcon />
-                            <span>Comments</span>
-                            <span className="tab-count">{annotations.length}</span>
-                        </button>
-                        <button
-                            className={`tab-btn ${sidebarTab === 'history' ? 'active' : ''}`}
-                            onClick={() => setSidebarTab('history')}
-                        >
-                            <HistoryIcon />
-                            <span>History</span>
-                            <span className="tab-count">{revisions.length}</span>
-                        </button>
+                            <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Team Discussion</h3>
+                        </div>
+                        <span className="tab-count">{annotations.length}</span>
                     </div>
 
-                    {sidebarTab === 'comments' ? (
-                        <>
-                            <div className="comments-header">
-                                <h3>Team Discussion</h3>
+                    <div className="comments-list">
+                        {annotations.length === 0 ? (
+                            <div className="comments-empty">
+                                <p>No comments yet</p>
+                                <p className="comments-empty-hint">Click on the image to pin a comment, or use the draw tool.</p>
                             </div>
-
-                            <div className="comments-list">
-                                {annotations.length === 0 ? (
-                                    <div className="comments-empty">
-                                        <p>No comments yet</p>
-                                        <p className="comments-empty-hint">Click on the image to pin a comment, or use the draw tool.</p>
-                                    </div>
-                                ) : (
-                                    annotations.map((ann) => {
-                                        const type = getAnnType(ann);
-                                        return (
-                                            <div
-                                                key={ann.id}
-                                                className={`comment-card ${hoveredAnnotation === ann.id ? 'highlighted' : ''}`}
-                                                onMouseEnter={() => setHoveredAnnotation(ann.id)}
-                                                onMouseLeave={() => setHoveredAnnotation(null)}
-                                            >
-                                                <div className="comment-avatar">{getInitial(ann.author_name)}</div>
-                                                <div className="comment-body">
-                                                    <div className="comment-meta">
-                                                        <span className="comment-author">{ann.author_name}</span>
-                                                        {type === 'freehand' && <span className="comment-tool-badge">✏️ Drawing</span>}
-                                                        {type === 'rect' && <span className="comment-tool-badge">▢ Area</span>}
-                                                        <span className="comment-time">{timeAgo(ann.timestamp)}</span>
-                                                    </div>
-                                                    <p className="comment-text">{ann.comment}</p>
-                                                </div>
+                        ) : (
+                            annotations.map((ann) => {
+                                const type = getAnnType(ann);
+                                return (
+                                    <div
+                                        key={ann.id}
+                                        className={`comment-card ${hoveredAnnotation === ann.id ? 'highlighted' : ''}`}
+                                        onMouseEnter={() => setHoveredAnnotation(ann.id)}
+                                        onMouseLeave={() => setHoveredAnnotation(null)}
+                                    >
+                                        <div className="comment-avatar">{getInitial(ann.author_name)}</div>
+                                        <div className="comment-body">
+                                            <div className="comment-meta">
+                                                <span className="comment-author">{ann.author_name}</span>
+                                                {type === 'freehand' && <span className="comment-tool-badge">✏️ Drawing</span>}
+                                                {type === 'rect' && <span className="comment-tool-badge">▢ Area</span>}
+                                                <span className="comment-time">{timeAgo(ann.timestamp)}</span>
                                             </div>
-                                        );
-                                    })
-                                )}
-                            </div>
-                        </>
-                    ) : (
-                        /* History Tab */
-                        <div className="history-view">
-                            <div className="comments-header">
-                                <h3>Revision History</h3>
-                            </div>
-                            <div className="history-list">
-                                {revisions.length === 0 ? (
-                                    <div className="comments-empty">
-                                        <p>No historical versions found.</p>
-                                    </div>
-                                ) : (
-                                    revisions.map((rev) => (
-                                        <div
-                                            key={rev.name}
-                                            className={`history-card clickable ${activeRevisionNum === rev.revision_number ? 'active' : ''} ${!activeRevisionNum && rev.revision_number === Math.max(...revisions.map(r => r.revision_number)) ? 'active' : ''}`}
-                                            onClick={() => setActiveRevisionNum(rev.revision_number)}
-                                        >
-                                            <div className="history-rev-number">v{rev.revision_number}</div>
-                                            <div className="history-body">
-                                                <div className="history-meta">
-                                                    <span className="history-user">{rev.owner}</span>
-                                                    <span className="history-time">{timeAgo(rev.creation)}</span>
-                                                </div>
-                                                {rev.revision_notes && <p className="history-notes">{rev.revision_notes}</p>}
-                                                <div className="history-actions">
-                                                    <span className="view-link">View this version →</span>
-                                                </div>
-                                            </div>
+                                            <p className="comment-text">{ann.comment}</p>
                                         </div>
-                                    ))
-                                )}
-                            </div>
-                            {activeRevisionNum && (
-                                <button className="back-to-latest-btn" onClick={() => setActiveRevisionNum(undefined)}>
-                                    Show Latest Version
-                                </button>
-                            )}
-                        </div>
-                    )}
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
 
                     {/* Comment input */}
                     <div className="comment-input-area">
