@@ -1,82 +1,82 @@
 {
- "charts": [],
- "content": "[{\"id\":\"bsV0qvpeFR\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Image Management System</span>\",\"col\":12}},{\"id\":\"BocSMOodDt\",\"type\":\"card\",\"data\":{\"card_name\":\"IMS Asset Deatils\",\"col\":4}}]",
- "creation": "2026-02-18 23:10:19.479808",
- "custom_blocks": [],
- "docstatus": 0,
- "doctype": "Workspace",
- "for_user": "",
- "hide_custom": 0,
- "icon": "image",
- "idx": 0,
- "indicator_color": "green",
- "is_hidden": 0,
- "label": "Image Management System",
- "links": [
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IMS Asset Deatils",
-   "link_count": 3,
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Card Break"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IMS Project",
-   "link_count": 0,
-   "link_to": "IMS Project",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IMS Marketing Asset",
-   "link_count": 0,
-   "link_to": "IMS Marketing Asset",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "IMS Asset Revision",
-   "link_count": 0,
-   "link_to": "IMS Asset Revision",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  }
- ],
- "modified": "2026-02-18 23:13:13.795941",
- "modified_by": "Administrator",
- "module": "Image Management System",
- "name": "Image Management System",
- "number_cards": [],
- "owner": "Administrator",
- "parent_page": "",
- "public": 1,
- "quick_lists": [],
- "roles": [
-  {
-   "role": "Graphic Designer"
-  },
-  {
-   "role": "Peer Reviewer"
-  },
-  {
-   "role": "Dept. Head"
-  },
-  {
-   "role": "CMO"
-  }
- ],
- "sequence_id": 39.0,
- "shortcuts": [],
- "title": "Image Management System"
+    "charts": [],
+    "content": "[{\"id\":\"bsV0qvpeFR\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Image Management System</span>\",\"col\":12}},{\"id\":\"BocSMOodDt\",\"type\":\"card\",\"data\":{\"card_name\":\"IMS Asset Deatils\",\"col\":4}}]",
+    "creation": "2026-02-18 23:10:19.479808",
+    "custom_blocks": [],
+    "docstatus": 0,
+    "doctype": "Workspace",
+    "for_user": "",
+    "hide_custom": 0,
+    "icon": "image",
+    "idx": 0,
+    "indicator_color": "green",
+    "is_hidden": 0,
+    "label": "Image Management System",
+    "links": [
+        {
+            "hidden": 0,
+            "is_query_report": 0,
+            "label": "IMS Asset Deatils",
+            "link_count": 3,
+            "link_type": "DocType",
+            "onboard": 0,
+            "type": "Card Break"
+        },
+        {
+            "hidden": 0,
+            "is_query_report": 0,
+            "label": "IMS Project",
+            "link_count": 0,
+            "link_to": "IMS Project",
+            "link_type": "DocType",
+            "onboard": 0,
+            "type": "Link"
+        },
+        {
+            "hidden": 0,
+            "is_query_report": 0,
+            "label": "IMS Marketing Asset",
+            "link_count": 0,
+            "link_to": "IMS Marketing Asset",
+            "link_type": "DocType",
+            "onboard": 0,
+            "type": "Link"
+        },
+        {
+            "hidden": 0,
+            "is_query_report": 0,
+            "label": "IMS Asset Revision",
+            "link_count": 0,
+            "link_to": "IMS Asset Revision",
+            "link_type": "DocType",
+            "onboard": 0,
+            "type": "Link"
+        }
+    ],
+    "modified": "2026-02-18 23:13:13.795941",
+    "modified_by": "Administrator",
+    "module": "Image Management System",
+    "name": "Image Management System",
+    "number_cards": [],
+    "owner": "Administrator",
+    "parent_page": "",
+    "public": 1,
+    "quick_lists": [],
+    "roles": [
+        {
+            "role": "IMS Graphic Designer"
+        },
+        {
+            "role": "IMS Peer Reviewer"
+        },
+        {
+            "role": "IMS HOD"
+        },
+        {
+            "role": "IMS Final Approver"
+        }
+    ],
+    "sequence_id": 39.0,
+    "shortcuts": [],
+    "title": "Image Management System"
 }

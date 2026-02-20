@@ -112,6 +112,10 @@
         {
             "read": 1,
             "role": "IMS Final Approver"
+        },
+        {
+            "read": 1,
+            "role": "All"
         }
     ],
     "sort_field": "creation",

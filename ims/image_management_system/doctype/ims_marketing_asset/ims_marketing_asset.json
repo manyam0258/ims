@@ -157,7 +157,7 @@
             "print": 1,
             "read": 1,
             "report": 1,
-            "role": "Graphic Designer",
+            "role": "IMS Graphic Designer",
             "share": 1,
             "write": 1
         },
@@ -167,7 +167,7 @@
             "print": 1,
             "read": 1,
             "report": 1,
-            "role": "Peer Reviewer",
+            "role": "IMS Peer Reviewer",
             "share": 1,
             "write": 1
         },
@@ -177,7 +177,7 @@
             "print": 1,
             "read": 1,
             "report": 1,
-            "role": "Dept. Head",
+            "role": "IMS HOD",
             "share": 1,
             "write": 1
         },
@@ -187,7 +187,7 @@
             "print": 1,
             "read": 1,
             "report": 1,
-            "role": "CMO",
+            "role": "IMS Final Approver",
             "share": 1,
             "write": 1
         }

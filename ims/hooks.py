@@ -41,10 +41,10 @@ fixtures = [
                 "name",
                 "in",
                 [
-                    "Graphic Designer",
-                    "Peer Reviewer",
-                    "Dept. Head",
-                    "CMO",
+                    "IMS Graphic Designer",
+                    "IMS Peer Reviewer",
+                    "IMS HOD",
+                    "IMS Final Approver",
                 ],
             ]
         ],

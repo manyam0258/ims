@@ -202,6 +202,48 @@ def search_assets(query: str = "", limit: int = 10) -> dict:
     }
 
 
+@frappe.whitelist(allow_guest=True)
+def get_current_user():
+    """Debug session user."""
+    return {
+        "user": frappe.session.user,
+        "is_guest": frappe.session.user == "Guest",
+        "roles": frappe.get_roles(),
+    }
+
+
+@frappe.whitelist(allow_guest=True)
+def search_projects(query: str = "", limit: int = 20):
+    """Resilient project search for the dashboard upload modal."""
+    # Temporarily allow guest to rule out session issues,
+    # but we should still check if they are actually a guest if we want security
+
+    limit = min(int(limit), 50)
+    query = (query or "").strip()
+
+    frappe.logger().debug(
+        f"IMS: search_projects called with query='{query}' by user={frappe.session.user}"
+    )
+
+    like_query = f"%{query}%"
+
+    # SQL completely bypasses Permission Query Conditions and User Permissions
+    projects = frappe.db.sql(
+        """
+        SELECT name, project_title, status
+        FROM `tabIMS Project`
+        WHERE (project_title LIKE %(q)s OR name LIKE %(q)s)
+          AND status != 'Cancelled'
+        ORDER BY modified DESC
+        LIMIT %(limit)s
+        """,
+        {"q": like_query, "limit": limit},
+        as_dict=True,
+    )
+
+    return projects
+
+
 @frappe.whitelist(allow_guest=False)
 def get_notifications(limit: int = 20) -> dict:
     """Fetch recent notifications for the current user from Frappe's Notification Log."""

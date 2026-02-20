@@ -23,9 +23,6 @@ const ChevronRightIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
 );
 
-const SearchIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-);
 
 const ClearIcon = () => (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
@@ -154,7 +151,7 @@ const CalendarPicker: React.FC<CalendarPickerProps> = ({ value, onChange, placeh
 /* ── Project Link Field ── */
 interface ProjectOption {
     name: string;
-    project_name: string;
+    project_title: string;
 }
 
 interface ProjectLinkFieldProps {
@@ -182,14 +179,28 @@ const ProjectLinkField: React.FC<ProjectLinkFieldProps> = ({ value, onChange }) 
         setLoading(true);
         try {
             const res = await fetch(
-                `/api/method/frappe.client.get_list?doctype=IMS Project&filters=${encodeURIComponent(JSON.stringify(searchTerm ? { project_name: ['like', `%${searchTerm}%`] } : {}))}&fields=${encodeURIComponent(JSON.stringify(['name', 'project_name']))}&limit_page_length=10&order_by=modified desc`,
+                `/api/method/ims.api.search_projects?query=${encodeURIComponent(searchTerm)}&limit=10`,
                 {
                     headers: { 'X-Frappe-CSRF-Token': (window as any).csrf_token || getCsrfToken() },
                 }
             );
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(`Server returned ${res.status}: ${text.slice(0, 100)}`);
+            }
             const data = await res.json();
-            setOptions(data.message || []);
-        } catch {
+            // Handle both simplified (list) and detailed (dict) response formats
+            let projects = [];
+            if (Array.isArray(data.message)) {
+                projects = data.message;
+            } else if (data.message?.projects) {
+                projects = data.message.projects;
+            } else if (Array.isArray(data)) {
+                projects = data;
+            }
+            setOptions(projects);
+        } catch (err) {
+            console.error('Project search failed:', err);
             setOptions([]);
         } finally {
             setLoading(false);
@@ -204,7 +215,7 @@ const ProjectLinkField: React.FC<ProjectLinkFieldProps> = ({ value, onChange }) 
 
     const handleSelect = (opt: ProjectOption) => {
         onChange(opt.name);
-        setQuery(opt.project_name || opt.name);
+        setQuery(opt.project_title || opt.name);
         setIsOpen(false);
     };
 
@@ -223,13 +234,12 @@ const ProjectLinkField: React.FC<ProjectLinkFieldProps> = ({ value, onChange }) 
     return (
         <div className="project-link" ref={ref}>
             <div className="project-link-input-wrap">
-                <SearchIcon />
                 <input
                     ref={inputRef}
                     type="text"
                     className="project-link-input"
                     placeholder="Search projects..."
-                    value={isOpen ? query : (value || '')}
+                    value={isOpen ? query : (options.find(o => o.name === value)?.project_title || value || '')}
                     onChange={(e) => { setQuery(e.target.value); if (!isOpen) setIsOpen(true); }}
                     onFocus={handleFocus}
                 />
@@ -252,7 +262,7 @@ const ProjectLinkField: React.FC<ProjectLinkFieldProps> = ({ value, onChange }) 
                                 className={`project-link-option ${opt.name === value ? 'selected' : ''}`}
                                 onClick={() => handleSelect(opt)}
                             >
-                                <span className="project-link-name">{opt.project_name || opt.name}</span>
+                                <span className="project-link-name">{opt.project_title || opt.name}</span>
                                 <span className="project-link-id">{opt.name}</span>
                             </button>
                         ))
