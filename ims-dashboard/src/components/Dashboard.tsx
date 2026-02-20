@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { useFrappeGetCall } from 'frappe-react-sdk';
 import { WorkflowMenu } from './WorkflowMenu';
 
@@ -20,17 +20,6 @@ interface RecentAsset {
     category: string;
     latest_file: string;
     creation: string;
-    asset_title_truncated?: string;
-}
-
-interface RecentUpload {
-    file_name: string;
-    display_name: string;
-    file_url: string;
-    file_size: number;
-    creation: string;
-    asset_name?: string;
-    asset_title?: string;
 }
 
 interface DashboardProps {
@@ -48,7 +37,16 @@ const statusColors: Record<string, string> = {
     Rejected: '#ef4444',
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ onAssetClick, onNavigate, refreshKey }) => {
+type StatusFilter = '' | 'Draft' | 'In Review' | 'Approved' | 'Rejected';
+type ViewMode = 'list' | 'kanban';
+
+const Dashboard: React.FC<DashboardProps> = ({ onAssetClick, refreshKey }) => {
+    const [activeFilter, setActiveFilter] = useState<StatusFilter>('');
+    const [viewMode, setViewMode] = useState<ViewMode>('list');
+    const [showAll, setShowAll] = useState(false);
+
+    const assetLimit = showAll ? 0 : 6;
+
     const { data: summaryData, mutate: refreshSummary } = useFrappeGetCall<{ message: DashboardSummary }>(
         'ims.api.get_dashboard_summary',
         undefined,
@@ -57,39 +55,24 @@ const Dashboard: React.FC<DashboardProps> = ({ onAssetClick, onNavigate, refresh
 
     const { data: assetsData, mutate: refreshAssets } = useFrappeGetCall<{ message: { assets: RecentAsset[] } }>(
         'ims.api.get_recent_assets',
-        { limit: 6 },
-        `recent-assets-${refreshKey}`,
-    );
-
-    const { data: uploadsData } = useFrappeGetCall<{ message: { uploads: RecentUpload[] } }>(
-        'ims.api.get_recent_uploads',
-        { limit: 5 },
-        `recent-uploads-${refreshKey}`,
+        { limit: assetLimit, status_filter: activeFilter },
+        `recent-assets-${refreshKey}-${activeFilter}-${assetLimit}`,
     );
 
     const summary = summaryData?.message;
     const assets = assetsData?.message?.assets || [];
-    const uploads = uploadsData?.message?.uploads || [];
 
-    const statusCards = [
-        { label: 'Draft', value: summary?.draft ?? 0, color: '#6b7280', icon: DraftIcon },
-        { label: 'In Review', value: (summary?.peer_review ?? 0) + (summary?.hod_approval ?? 0), color: '#3b82f6', icon: ReviewIcon },
-        { label: 'Approved', value: summary?.approved ?? 0, color: '#10b981', icon: ApprovedIcon },
-        { label: 'Rejected', value: summary?.rejected ?? 0, color: '#ef4444', icon: RejectedIcon },
-        { label: 'Total Assets', value: summary?.total ?? 0, color: '#8b5cf6', icon: TotalIcon },
-    ];
+    const statusCards = useMemo(() => [
+        { label: 'Draft', filterKey: 'Draft' as StatusFilter, value: summary?.draft ?? 0, color: '#6b7280', icon: DraftIcon },
+        { label: 'In Review', filterKey: 'In Review' as StatusFilter, value: (summary?.peer_review ?? 0) + (summary?.hod_approval ?? 0) + (summary?.final_signoff ?? 0), color: '#3b82f6', icon: ReviewIcon },
+        { label: 'Approved', filterKey: 'Approved' as StatusFilter, value: summary?.approved ?? 0, color: '#10b981', icon: ApprovedIcon },
+        { label: 'Rejected', filterKey: 'Rejected' as StatusFilter, value: summary?.rejected ?? 0, color: '#ef4444', icon: RejectedIcon },
+        { label: 'Total Assets', filterKey: '' as StatusFilter, value: summary?.total ?? 0, color: '#8b5cf6', icon: TotalIcon },
+    ], [summary]);
 
     const formatDate = (dateStr: string) => {
         const d = new Date(dateStr);
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    };
-
-    const formatFileSize = (bytes: number): string => {
-        if (!bytes) return '';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
     const isImage = (url: string) => {
@@ -102,41 +85,87 @@ const Dashboard: React.FC<DashboardProps> = ({ onAssetClick, onNavigate, refresh
         refreshSummary();
     };
 
+    const handleFilterClick = (filterKey: StatusFilter) => {
+        setActiveFilter((prev) => (prev === filterKey ? '' : filterKey));
+    };
+
+    const handleToggleShowAll = () => {
+        setShowAll((prev) => !prev);
+    };
+
     return (
         <div className="dashboard-page">
+            {/* Page Header */}
             <div className="page-header">
                 <div className="page-header-left">
-                    <h1>Dashboard</h1>
-                    <p className="page-subtitle">Overview of your marketing assets and recent activity.</p>
+                    <h1>Assets</h1>
+                    <p className="page-subtitle">All your marketing assets in one place.</p>
                 </div>
             </div>
 
-            {/* Status Cards */}
+            {/* Filterable Status Cards */}
             <div className="status-cards">
                 {statusCards.map((card) => (
-                    <div className="status-card" key={card.label}>
+                    <div
+                        className={`status-card clickable ${activeFilter === card.filterKey ? 'active' : ''}`}
+                        key={card.label}
+                        onClick={() => handleFilterClick(card.filterKey)}
+                        style={activeFilter === card.filterKey ? { borderColor: card.color, boxShadow: `0 0 0 2px ${card.color}22` } : undefined}
+                    >
                         <div className="card-header">
                             <span className="card-icon-svg" style={{ color: card.color }}><card.icon /></span>
                             <span className="card-label">{card.label}</span>
                         </div>
                         <span className="card-value">{card.value}</span>
+                        {activeFilter === card.filterKey && (
+                            <span className="card-filter-indicator" style={{ color: card.color }}>✓ Filtered</span>
+                        )}
                     </div>
                 ))}
             </div>
 
-            {/* Two-Column Layout */}
-            <div className="dashboard-panels">
-                {/* Recent Assets */}
-                <div className="panel">
-                    <div className="panel-header">
-                        <h3 className="panel-title">Recent Assets</h3>
-                        <button className="panel-link" onClick={() => onNavigate('assets')}>View all →</button>
+            {/* View Toggle + View All */}
+            <div className="assets-toolbar">
+                <div className="assets-toolbar-left">
+                    <h3 className="panel-title">{showAll ? 'All Assets' : 'Recent Assets'}</h3>
+                    {activeFilter && (
+                        <span className="active-filter-badge" style={{ background: statusCards.find(c => c.filterKey === activeFilter)?.color || '#6b7280' }}>
+                            {activeFilter}
+                            <button className="filter-clear-btn" onClick={(e) => { e.stopPropagation(); setActiveFilter(''); }}>×</button>
+                        </span>
+                    )}
+                </div>
+                <div className="assets-toolbar-right">
+                    <div className="view-toggle">
+                        <button
+                            className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
+                            onClick={() => setViewMode('list')}
+                            title="List View"
+                        >
+                            <ListIcon />
+                        </button>
+                        <button
+                            className={`view-toggle-btn ${viewMode === 'kanban' ? 'active' : ''}`}
+                            onClick={() => setViewMode('kanban')}
+                            title="Card View"
+                        >
+                            <GridIcon />
+                        </button>
                     </div>
+                    <button className="panel-link" onClick={handleToggleShowAll}>
+                        {showAll ? '← Show recent' : 'View all →'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Assets — List or Kanban */}
+            {viewMode === 'list' ? (
+                <div className="assets-section">
                     <div className="panel-list">
                         {assets.length === 0 ? (
                             <div className="panel-empty">
                                 <EmptyAssetsIcon />
-                                <p>No assets yet. Click <strong>Upload</strong> to add your first asset.</p>
+                                <p>{activeFilter ? `No ${activeFilter.toLowerCase()} assets found.` : 'No assets yet. Click Upload to add your first asset.'}</p>
                             </div>
                         ) : (
                             assets.map((asset) => (
@@ -184,52 +213,65 @@ const Dashboard: React.FC<DashboardProps> = ({ onAssetClick, onNavigate, refresh
                         )}
                     </div>
                 </div>
-
-                {/* Recent Uploads */}
-                <div className="panel">
-                    <div className="panel-header">
-                        <h3 className="panel-title">Recent Uploads</h3>
-                    </div>
-                    <div className="panel-list">
-                        {uploads.length === 0 ? (
-                            <div className="panel-empty">
-                                <EmptyUploadsIcon />
-                                <p>No uploads yet.</p>
-                            </div>
-                        ) : (
-                            uploads.map((upload, idx) => (
-                                <div className="panel-item" key={upload.file_name || idx}>
-                                    <div className="item-left">
-                                        {isImage(upload.file_url) ? (
-                                            <img
-                                                className="item-thumb"
-                                                src={upload.file_url}
-                                                alt={upload.display_name}
-                                                loading="lazy"
-                                                onError={(e) => {
-                                                    (e.target as HTMLImageElement).style.display = 'none';
-                                                    (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                                                }}
-                                            />
-                                        ) : null}
-                                        <span className={`item-thumb-fallback ${isImage(upload.file_url) ? 'hidden' : ''}`}>
-                                            <FileIcon />
-                                        </span>
-                                        <div className="item-info">
-                                            <span className="item-title">{upload.display_name}</span>
-                                            <span className="item-meta">
-                                                {upload.asset_name || ''} · {formatDate(upload.creation)}
-                                                {upload.file_size ? ` · ${formatFileSize(upload.file_size)}` : ''}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <span className="type-badge">Asset</span>
+            ) : (
+                /* Kanban / Card Grid View */
+                <div className="kanban-grid">
+                    {assets.length === 0 ? (
+                        <div className="panel-empty wide">
+                            <EmptyAssetsIcon />
+                            <p>{activeFilter ? `No ${activeFilter.toLowerCase()} assets found.` : 'No assets yet. Click Upload to add your first asset.'}</p>
+                        </div>
+                    ) : (
+                        assets.map((asset) => (
+                            <div className="kanban-card" key={asset.name}>
+                                {/* Thumbnail */}
+                                <div className="kanban-card-thumb" onClick={() => onAssetClick(asset.name)}>
+                                    {isImage(asset.latest_file) ? (
+                                        <img
+                                            src={asset.latest_file}
+                                            alt={asset.asset_title}
+                                            loading="lazy"
+                                            onError={(e) => {
+                                                (e.target as HTMLImageElement).style.display = 'none';
+                                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                                            }}
+                                        />
+                                    ) : null}
+                                    <span className={`kanban-thumb-fallback ${isImage(asset.latest_file) ? 'hidden' : ''}`}>
+                                        <FileImageIcon />
+                                    </span>
                                 </div>
-                            ))
-                        )}
-                    </div>
+
+                                {/* Card Body */}
+                                <div className="kanban-card-body">
+                                    <span className="kanban-card-title" onClick={() => onAssetClick(asset.name)}>
+                                        {asset.asset_title}
+                                    </span>
+                                    <span className="kanban-card-meta">{asset.name} · {formatDate(asset.creation)}</span>
+                                    {asset.campaign && <span className="kanban-card-campaign">{asset.campaign}</span>}
+                                </div>
+
+                                {/* Card Footer — Workflow clearly visible */}
+                                <div className="kanban-card-footer">
+                                    <WorkflowMenu
+                                        assetName={asset.name}
+                                        asBadge={true}
+                                        onTransitionComplete={handleWorkflowChange}
+                                        trigger={
+                                            <span
+                                                className="status-badge kanban-status-badge"
+                                                style={{ background: statusColors[asset.status] || '#6b7280', cursor: 'pointer' }}
+                                            >
+                                                {asset.status}
+                                            </span>
+                                        }
+                                    />
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
-            </div>
+            )}
         </div>
     );
 };
@@ -253,14 +295,14 @@ function TotalIcon() {
 function FileImageIcon() {
     return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>;
 }
-function FileIcon() {
-    return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>;
-}
 function EmptyAssetsIcon() {
     return <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3, marginBottom: 8 }}><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>;
 }
-function EmptyUploadsIcon() {
-    return <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3, marginBottom: 8 }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>;
+function ListIcon() {
+    return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></svg>;
+}
+function GridIcon() {
+    return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>;
 }
 
 export default Dashboard;

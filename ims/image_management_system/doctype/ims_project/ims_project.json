@@ -93,6 +93,25 @@
             "role": "System Manager",
             "share": 1,
             "write": 1
+        },
+        {
+            "create": 1,
+            "read": 1,
+            "write": 1,
+            "role": "IMS Graphic Designer"
+        },
+        {
+            "read": 1,
+            "role": "IMS Peer Reviewer"
+        },
+        {
+            "read": 1,
+            "write": 1,
+            "role": "IMS HOD"
+        },
+        {
+            "read": 1,
+            "role": "IMS Final Approver"
         }
     ],
     "sort_field": "creation",

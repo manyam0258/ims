@@ -39,9 +39,32 @@ def get_dashboard_summary() -> dict:
 
 
 @frappe.whitelist(allow_guest=False)
-def get_recent_assets(limit: int = 10) -> dict:
-    """Fetch recent IMS Marketing Assets for the dashboard."""
-    limit = min(int(limit), 50)
+def get_recent_assets(limit: int = 10, status_filter: str = "") -> dict:
+    """Fetch recent IMS Marketing Assets for the dashboard.
+
+    Args:
+        limit: Max records. 0 means fetch all (up to 500).
+        status_filter: Optional filter – 'Draft', 'In Review', 'Approved', 'Rejected', or '' for all.
+    """
+    limit = int(limit)
+    if limit == 0:
+        limit = 500
+    else:
+        limit = min(limit, 50)
+
+    filters: dict = {}
+    if status_filter:
+        if status_filter == "In Review":
+            filters["status"] = [
+                "in",
+                ["Peer Review", "HOD Approval", "Final Sign-off"],
+            ]
+        elif status_filter == "Draft":
+            filters["status"] = "Draft"
+        elif status_filter == "Approved":
+            filters["status"] = "Approved"
+        elif status_filter == "Rejected":
+            filters["status"] = "Rejected"
 
     assets = frappe.db.get_list(
         "IMS Marketing Asset",
@@ -56,6 +79,7 @@ def get_recent_assets(limit: int = 10) -> dict:
             "creation",
             "modified",
         ],
+        filters=filters,
         order_by="creation DESC",
         limit=limit,
     )
@@ -385,13 +409,12 @@ def upload_marketing_asset(
     file_url = None
 
     if files and "file" in files:
+        # Force uploaded file to be public
+        frappe.form_dict["is_private"] = 0
         from frappe.handler import upload_file
 
         file_doc = upload_file()
         file_url = file_doc.file_url
-        if not file_doc.is_private:
-            file_doc.is_private = 1
-            file_doc.save(ignore_permissions=True)
     else:
         file_url = frappe.form_dict.get("file_url")
 
@@ -498,9 +521,10 @@ def submit_annotation(
                 "revision_file": asset_doc.latest_file,
                 "annotations": json.dumps([]),
                 "revision_notes": "Auto-created revision for first annotation.",
+                "content_brief": asset_doc.description or "",
             }
         )
-        revision_doc.insert(ignore_permissions=False)
+        revision_doc.insert(ignore_permissions=True)
         frappe.db.commit()
         latest_revision = revision_doc.name
 
@@ -526,7 +550,7 @@ def submit_annotation(
 
     existing_annotations.append(annotation)
     revision.annotations = json.dumps(existing_annotations)
-    revision.save(ignore_permissions=False)
+    revision.save(ignore_permissions=True)
     frappe.db.commit()
 
     # Process mentions
@@ -606,16 +630,21 @@ def get_annotations(marketing_asset: str) -> dict:
     latest_revision = frappe.db.get_value(
         "IMS Asset Revision",
         {"marketing_asset": marketing_asset},
-        ["name", "revision_number", "revision_file", "annotations"],
+        ["name", "revision_number", "revision_file", "annotations", "content_brief"],
         order_by="revision_number DESC",
         as_dict=True,
     )
 
     if not latest_revision:
+        # No revision yet — fall back to asset description
+        asset_desc = frappe.db.get_value(
+            "IMS Marketing Asset", marketing_asset, "description"
+        )
         return {
             "status": "success",
             "annotations": [],
             "revision": None,
+            "content_brief": asset_desc or "",
         }
 
     annotations = json.loads(latest_revision.annotations or "[]")
@@ -626,6 +655,7 @@ def get_annotations(marketing_asset: str) -> dict:
         "revision": latest_revision.name,
         "revision_number": latest_revision.revision_number,
         "revision_file": latest_revision.revision_file,
+        "content_brief": latest_revision.content_brief or "",
     }
 
 
@@ -801,27 +831,25 @@ def upload_revision(marketing_asset: str, notes: str = "") -> dict:
 
     file.filename = new_filename
 
+    # Force uploaded file to be public
+    frappe.form_dict["is_private"] = 0
     from frappe.handler import upload_file
 
     file_doc = upload_file()
     file_url = file_doc.file_url
 
-    if not file_doc.is_private:
-        file_doc.is_private = 1
-        file_doc.save(ignore_permissions=True)
-
-    # Get latest revision number
-    latest_rev_num = (
-        frappe.db.get_value(
-            "IMS Asset Revision",
-            {"marketing_asset": marketing_asset},
-            "revision_number",
-            order_by="revision_number DESC",
-        )
-        or 0
+    # Get latest revision (number + content_brief to carry forward)
+    prev_revision = frappe.db.get_value(
+        "IMS Asset Revision",
+        {"marketing_asset": marketing_asset},
+        ["revision_number", "content_brief"],
+        order_by="revision_number DESC",
+        as_dict=True,
     )
+    latest_rev_num = prev_revision.revision_number if prev_revision else 0
+    prev_content_brief = prev_revision.content_brief if prev_revision else ""
 
-    # Create new revision
+    # Create new revision — carry forward content_brief from previous
     revision = frappe.get_doc(
         {
             "doctype": "IMS Asset Revision",
@@ -831,6 +859,7 @@ def upload_revision(marketing_asset: str, notes: str = "") -> dict:
             "revision_notes": notes,
             "annotations": "[]",  # Start clean for new image
             "created_by": frappe.session.user,
+            "content_brief": prev_content_brief or "",
         }
     )
     revision.insert(ignore_permissions=True)
@@ -846,4 +875,30 @@ def upload_revision(marketing_asset: str, notes: str = "") -> dict:
         "message": _("New revision uploaded successfully"),
         "file_url": file_url,
         "revision": revision.revision_number,
+    }
+
+
+@frappe.whitelist(allow_guest=False)
+def update_content_brief(revision_name: str, content_brief: str = "") -> dict:
+    """Update content brief on a revision (for reviewer suggestions)."""
+    if not frappe.db.exists("IMS Asset Revision", revision_name):
+        frappe.throw(
+            _("Revision {0} does not exist.").format(revision_name),
+            frappe.DoesNotExistError,
+        )
+
+    # Permission check via parent asset
+    marketing_asset = frappe.db.get_value(
+        "IMS Asset Revision", revision_name, "marketing_asset"
+    )
+    frappe.has_permission("IMS Marketing Asset", "write", marketing_asset, throw=True)
+
+    frappe.db.set_value(
+        "IMS Asset Revision", revision_name, "content_brief", content_brief
+    )
+    frappe.db.commit()
+
+    return {
+        "status": "success",
+        "message": _("Content brief updated successfully."),
     }

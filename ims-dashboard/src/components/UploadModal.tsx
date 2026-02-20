@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 interface UploadModalProps {
     isOpen: boolean;
@@ -480,12 +482,22 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuccess })
 
                     <div className="form-group">
                         <label>Description</label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="Brief description of the asset..."
-                            rows={2}
-                        />
+                        <div className="upload-quill-wrapper">
+                            <ReactQuill
+                                theme="snow"
+                                value={description}
+                                onChange={setDescription}
+                                placeholder="Describe the asset content, intended usage, or key messaging..."
+                                modules={{
+                                    toolbar: [
+                                        ['bold', 'italic', 'underline'],
+                                        [{ list: 'ordered' }, { list: 'bullet' }],
+                                        ['link'],
+                                        ['clean']
+                                    ]
+                                }}
+                            />
+                        </div>
                     </div>
                 </div>
 

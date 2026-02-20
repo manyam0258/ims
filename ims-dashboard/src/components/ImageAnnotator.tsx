@@ -1,5 +1,7 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useFrappeGetCall, useFrappePostCall } from 'frappe-react-sdk';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 import { WorkflowMenu } from './WorkflowMenu';
 
 /* ── Types ── */
@@ -23,6 +25,7 @@ interface AnnotationData {
     revision_number?: number;
     revision_file?: string;
     status: string;
+    content_brief?: string;
 }
 
 interface WorkflowResponse {
@@ -231,7 +234,56 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
     const asset = assetData?.message;
     const annotations = annotationData?.message?.annotations || [];
+    const contentBrief = annotationData?.message?.content_brief || '';
+    const revisionName = annotationData?.message?.revision || '';
     const currentWorkflowState = workflowData?.message?.current_state || asset?.status;
+
+    /* ── Content Brief editing state ── */
+    const [editedBrief, setEditedBrief] = useState(contentBrief);
+    const [briefDirty, setBriefDirty] = useState(false);
+    const [briefSaving, setBriefSaving] = useState(false);
+    const [briefSaved, setBriefSaved] = useState(false);
+    const briefInitialized = useRef(false);
+
+    // Sync when API data loads/changes
+    useEffect(() => {
+        setEditedBrief(contentBrief);
+        setBriefDirty(false);
+        setBriefSaved(false);
+        briefInitialized.current = false;
+    }, [contentBrief]);
+
+    const handleBriefChange = useCallback((value: string) => {
+        // Skip the first onChange from ReactQuill mount
+        if (!briefInitialized.current) {
+            briefInitialized.current = true;
+            return;
+        }
+        setEditedBrief(value);
+        setBriefDirty(true);
+        setBriefSaved(false);
+    }, []);
+
+    const handleSaveBrief = useCallback(async () => {
+        if (!revisionName || !briefDirty) return;
+        setBriefSaving(true);
+        try {
+            const resp = await fetch('/api/method/ims.api.update_content_brief', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Frappe-CSRF-Token': (window as any).csrf_token || '',
+                },
+                body: JSON.stringify({ revision_name: revisionName, content_brief: editedBrief }),
+            });
+            if (resp.ok) {
+                setBriefDirty(false);
+                setBriefSaved(true);
+                setTimeout(() => setBriefSaved(false), 3000);
+            }
+        } catch { /* silent */ }
+        setBriefSaving(false);
+    }, [revisionName, editedBrief, briefDirty]);
 
     const fileUrl = asset?.latest_file || '';
     const isVideo = isVideoFile(fileUrl);
@@ -656,6 +708,44 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                         {!imageLoaded && (
                             <div className="annotator-loading-overlay"><div className="loading-spinner" /></div>
                         )}
+                    </div>
+
+                    {/* Content Brief panel below canvas — editable */}
+                    <div className="content-brief-panel">
+                        <div className="content-brief-header">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" />
+                            </svg>
+                            <span>Content Brief — Revision {annotationData?.message?.revision_number || 'Latest'}</span>
+                            <div className="content-brief-actions">
+                                {briefSaved && <span className="brief-saved-badge">✓ Saved</span>}
+                                {briefDirty && (
+                                    <button
+                                        className="brief-save-btn"
+                                        onClick={handleSaveBrief}
+                                        disabled={briefSaving}
+                                    >
+                                        {briefSaving ? 'Saving…' : 'Save'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="content-brief-editor">
+                            <ReactQuill
+                                theme="snow"
+                                value={editedBrief}
+                                onChange={handleBriefChange}
+                                placeholder="No content brief yet. Add the intended text or copy for this asset…"
+                                modules={{
+                                    toolbar: [
+                                        ['bold', 'italic', 'underline'],
+                                        [{ list: 'ordered' }, { list: 'bullet' }],
+                                        ['link'],
+                                        ['clean']
+                                    ]
+                                }}
+                            />
+                        </div>
                     </div>
                 </div>
 

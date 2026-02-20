@@ -13,6 +13,8 @@
         "revision_file",
         "annotations_section",
         "annotations",
+        "content_brief_section",
+        "content_brief",
         "notes_section",
         "revision_notes",
         "amended_from"
@@ -62,13 +64,24 @@
             "description": "Stores annotation coordinates and comments as JSON array: [{x, y, width, height, comment, author, timestamp}]"
         },
         {
+            "fieldname": "content_brief_section",
+            "fieldtype": "Section Break",
+            "label": "Content Brief"
+        },
+        {
+            "fieldname": "content_brief",
+            "fieldtype": "Text Editor",
+            "label": "Content Brief",
+            "description": "The intended text or copy for this asset version. Reviewers can reference this to compare against the visual."
+        },
+        {
             "fieldname": "notes_section",
             "fieldtype": "Section Break",
             "label": "Notes"
         },
         {
             "fieldname": "revision_notes",
-            "fieldtype": "Small Text",
+            "fieldtype": "Text Editor",
             "label": "Revision Notes"
         },
         {
@@ -102,6 +115,30 @@
             "role": "System Manager",
             "share": 1,
             "write": 1
+        },
+        {
+            "create": 1,
+            "read": 1,
+            "write": 1,
+            "role": "IMS Graphic Designer"
+        },
+        {
+            "create": 1,
+            "read": 1,
+            "write": 1,
+            "role": "IMS Peer Reviewer"
+        },
+        {
+            "create": 1,
+            "read": 1,
+            "write": 1,
+            "role": "IMS HOD"
+        },
+        {
+            "create": 1,
+            "read": 1,
+            "write": 1,
+            "role": "IMS Final Approver"
         }
     ],
     "sort_field": "creation",
