@@ -36,3 +36,18 @@ class IMSMarketingAsset(Document):
         workflow_state = getattr(self, "workflow_state", None)
         if workflow_state and self.status != workflow_state:
             self.db_set("status", workflow_state)
+
+    def after_insert(self):
+        """Create initial revision (Revision 1) automatically on creation."""
+        if self.latest_file:
+            frappe.get_doc(
+                {
+                    "doctype": "IMS Asset Revision",
+                    "marketing_asset": self.name,
+                    "revision_number": 1,
+                    "revision_file": self.latest_file,
+                    "annotations": "[]",
+                    "content_brief": self.description or "",
+                    "revision_notes": "Initial upload",
+                }
+            ).insert(ignore_permissions=True)

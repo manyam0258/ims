@@ -1,5 +1,7 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useFrappeGetCall, useFrappePostCall } from 'frappe-react-sdk';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 import { WorkflowMenu } from './WorkflowMenu';
 
 /* ── Types ── */
@@ -23,7 +25,19 @@ interface AnnotationData {
     revision_number?: number;
     revision_file?: string;
     status: string;
+    content_brief?: string;
+    can_upload_revision?: boolean;
 }
+
+interface Revision {
+    name: string;
+    revision_number: number;
+    revision_file: string;
+    revision_notes?: string;
+    creation: string;
+    owner: string;
+}
+
 
 interface WorkflowResponse {
     status: string;
@@ -118,13 +132,27 @@ function toSvgPath(points: { x: number; y: number }[]): string {
         .join(' ');
 }
 
+const UploadIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+);
+
+const HistoryIcon = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+    </svg>
+);
+
 /* ── Component ── */
 const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const commentInputRef = useRef<HTMLTextAreaElement>(null);
+    const revisionInputRef = useRef<HTMLInputElement>(null);
 
-    // Tool state
+    // Tool & Sidebar state
     const [activeTool, setActiveTool] = useState<ToolMode>('cursor');
+    const [activeRevisionNum, setActiveRevisionNum] = useState<number | undefined>(undefined);
 
     // Rect drag state
     const [isDragging, setIsDragging] = useState(false);
@@ -146,15 +174,26 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     const [imageLoaded, setImageLoaded] = useState(false);
     const [comment, setComment] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [uploadingRevision, setUploadingRevision] = useState(false);
+
+    /* ── Mentions state ── */
+    const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+    const [showMentions, setShowMentions] = useState(false);
 
     // Fetch asset
-    const { data: assetData } = useFrappeGetCall<{
+    const { data: assetData, mutate: refreshAsset } = useFrappeGetCall<{
         message: { latest_file: string; asset_title: string; campaign: string; category: string; status: string };
     }>('frappe.client.get', { doctype: 'IMS Marketing Asset', name: assetName });
 
     const { data: annotationData, mutate: refreshAnnotations } = useFrappeGetCall<{ message: AnnotationData }>(
-        'ims.api.get_annotations', { marketing_asset: assetName }
+        'ims.api.get_annotations', { marketing_asset: assetName, revision_number: activeRevisionNum }
     );
+
+    // Fetch revision history
+    const { data: revisionHistory } = useFrappeGetCall<{ message: { revisions: Revision[] } }>(
+        'ims.api.get_revision_history', { marketing_asset: assetName }
+    );
+    const revisions = revisionHistory?.message?.revisions || [];
 
     // Fetch workflow transitions (just for current state)
     const { data: workflowData, mutate: refreshWorkflow } = useFrappeGetCall<{ message: WorkflowResponse }>(
@@ -162,13 +201,134 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     );
 
     const { call: submitAnnotation } = useFrappePostCall('ims.api.submit_annotation');
+    const { call: saveBriefApi } = useFrappePostCall('ims.api.save_content_brief');
+
+    // Fetch users for mention
+    const { data: mentionData } = useFrappeGetCall<{ message: { users: { name: string; full_name: string; user_image?: string }[] } }>(
+        'ims.api.get_users_for_mention',
+        { query: mentionQuery || '' },
+        showMentions && mentionQuery !== null ? `mentions-${mentionQuery}` : null
+    );
+
+    const mentionUsers = mentionData?.message?.users || [];
+
+    // We can't use useFrappePostCall for file uploads easily with standard fetch wrapper if it expects JSON
+    // But frappe-react-sdk usually handles it if body is FormData? 
+    // Let's rely on standard fetch or check if we can mock it.
+    // Actually, let's just use standard fetch for the file upload to be safe and explicit.
+
+    const handleRevisionUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return;
+        const file = e.target.files[0];
+        setUploadingRevision(true);
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('marketing_asset', assetName);
+        formData.append('notes', 'Uploaded via Dashboard');
+
+        // CSRF handling if needed, but in standard Desk app session it often works with cookies.
+        // If we are in a pure React app served by Frappe, cookies are present.
+
+        try {
+            const res = await fetch('/api/method/ims.api.upload_revision', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Frappe-CSRF-Token': (window as any).csrf_token || '',
+                }
+            });
+            const data = await res.json();
+            if (data.message && data.message.status === 'success') {
+                refreshAsset(); // Update the image
+                refreshAnnotations(); // Reload annotations (might be empty/different for new revision)
+                refreshWorkflow();
+                alert('New revision uploaded successfully.');
+            } else {
+                console.error('Upload failed', data);
+                alert('Upload failed: ' + (data.message || data.exception));
+            }
+        } catch (err) {
+            console.error('Upload error', err);
+            alert('An error occurred during upload.');
+        } finally {
+            setUploadingRevision(false);
+            if (revisionInputRef.current) revisionInputRef.current.value = '';
+        }
+    };
 
     const asset = assetData?.message;
     const annotations = annotationData?.message?.annotations || [];
+    const contentBrief = annotationData?.message?.content_brief || '';
+    const revisionName = annotationData?.message?.revision || '';
+    const canUploadRevision = annotationData?.message?.can_upload_revision;
     const currentWorkflowState = workflowData?.message?.current_state || asset?.status;
 
-    const fileUrl = asset?.latest_file || '';
+    /* ── Content Brief editing state ── */
+    const [editedBrief, setEditedBrief] = useState(contentBrief);
+    const [briefDirty, setBriefDirty] = useState(false);
+    const [briefSaving, setBriefSaving] = useState(false);
+    const [briefSaved, setBriefSaved] = useState(false);
+    const briefInitialized = useRef(false);
+
+    // Sync when API data loads/changes
+    useEffect(() => {
+        setEditedBrief(contentBrief);
+        setBriefDirty(false);
+        setBriefSaved(false);
+        briefInitialized.current = false;
+    }, [contentBrief]);
+
+    const handleBriefChange = useCallback((value: string) => {
+        // Skip the first onChange from ReactQuill mount
+        if (!briefInitialized.current) {
+            briefInitialized.current = true;
+            return;
+        }
+        setEditedBrief(value);
+        setBriefDirty(true);
+        setBriefSaved(false);
+    }, []);
+
+    const handleSaveBrief = useCallback(async () => {
+        if (!briefDirty) return;
+        setBriefSaving(true);
+
+        try {
+            const payload = {
+                marketing_asset: assetName,
+                revision_name: revisionName || null,
+                content_brief: editedBrief
+            };
+            console.log('Saving content brief...', payload);
+
+            const resp = await saveBriefApi(payload);
+            console.log('Save response:', resp);
+
+            if (resp.status === 'success') {
+                setBriefDirty(false);
+                setBriefSaved(true);
+                // Force a refresh of local data to confirm persistence
+                refreshAnnotations();
+                setTimeout(() => setBriefSaved(false), 3000);
+
+                // If a different revision was returned (e.g. Revision 1 was protected),
+                // we should probably stay on latest or update UI.
+                // Mutate already handles this by fetching latest if activeRevisionNum is null.
+            } else {
+                console.error('Save failed', resp);
+                alert(`Save failed: ${resp.message || 'Unknown error'}`);
+            }
+        } catch (err) {
+            console.error('Save error', err);
+            alert('An error occurred while saving the content brief.');
+        }
+        setBriefSaving(false);
+    }, [saveBriefApi, assetName, revisionName, editedBrief, briefDirty, refreshAnnotations]);
+
+    const fileUrl = annotationData?.message?.revision_file || asset?.latest_file || '';
     const isVideo = isVideoFile(fileUrl);
+    const isViewingLatest = !activeRevisionNum;
 
     /* ── Coordinate helper ── */
     const getPercentCoords = useCallback(
@@ -187,7 +347,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     /* ── Mouse handlers ── */
     const handleMouseDown = useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
-            if (isVideo) return;
+            if (isVideo || !isViewingLatest) return;
             const coords = getPercentCoords(e);
 
             if (activeTool === 'pen') {
@@ -207,7 +367,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
     const handleMouseMove = useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
-            if (isVideo) return;
+            if (isVideo || !isViewingLatest) return;
             const coords = getPercentCoords(e);
 
             if (activeTool === 'pen' && isDrawing) {
@@ -224,7 +384,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
     const handleMouseUp = useCallback(
         (e: React.MouseEvent<HTMLDivElement>) => {
-            if (isVideo) return;
+            if (isVideo || !isViewingLatest) return;
 
             if (activeTool === 'pen' && isDrawing && currentPath.length > 1) {
                 // Compute bounding box center for the annotation coordinates
@@ -301,6 +461,44 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
         [handleSubmitComment]
     );
 
+    const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const val = e.target.value;
+        setComment(val);
+
+        const cursor = e.target.selectionStart;
+        const textBefore = val.slice(0, cursor);
+        const match = textBefore.match(/@([a-zA-Z0-9._]*)$/);
+
+        if (match) {
+            setMentionQuery(match[1]);
+            setShowMentions(true);
+        } else {
+            setShowMentions(false);
+            setMentionQuery(null);
+        }
+    };
+
+    const handleSelectMention = (user: { name: string; full_name: string }) => {
+        if (!commentInputRef.current) return;
+        const cursor = commentInputRef.current.selectionStart;
+        const textBefore = comment.slice(0, cursor);
+        const textAfter = comment.slice(cursor);
+        const match = textBefore.match(/@([a-zA-Z0-9._]*)$/);
+
+        if (match && match.index !== undefined) {
+            const newText = textBefore.slice(0, match.index) + `@${user.name} ` + textAfter;
+            setComment(newText);
+            setShowMentions(false);
+            setMentionQuery(null);
+            setTimeout(() => {
+                if (commentInputRef.current) {
+                    commentInputRef.current.focus();
+                }
+            }, 50);
+        }
+    };
+
+
     /* ── Rect selection preview ── */
     const selectionRect =
         isDragging && dragStart && dragCurrent
@@ -352,6 +550,13 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
     return (
         <div className="asset-viewer">
+            <input
+                type="file"
+                ref={revisionInputRef}
+                style={{ display: 'none' }}
+                onChange={handleRevisionUpload}
+                accept="image/*,video/*"
+            />
             {/* ── Header ── */}
             <div className="asset-header">
                 <div className="asset-header-left">
@@ -364,6 +569,16 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                     <span className="asset-type-badge">{currentWorkflowState || asset.category || 'Asset'}</span>
                 </div>
                 <div className="asset-header-right">
+                    {uploadingRevision ? (
+                        <button className="asset-action-btn" disabled>
+                            <div className="loading-spinner-sm" style={{ width: 14, height: 14, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                            <span>Uploading...</span>
+                        </button>
+                    ) : canUploadRevision && (
+                        <button className="asset-action-btn" onClick={() => revisionInputRef.current?.click()}>
+                            <UploadIcon /><span>New Version</span>
+                        </button>
+                    )}
                     <button className="asset-action-btn" onClick={handleShare}>
                         <ShareIcon /><span>Share</span>
                     </button>
@@ -386,7 +601,55 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
             {/* ── Workspace ── */}
             <div className="asset-workspace">
-                {/* Media column */}
+                {/* 1. Revision History Sidebar (Left) */}
+                <div className="revision-history-sidebar">
+                    <div className="revision-sidebar-header">
+                        <HistoryIcon />
+                        <h3>Revisions</h3>
+                    </div>
+                    <div className="revision-list">
+                        {revisions.length === 0 ? (
+                            <div className="comments-empty">
+                                <p>No historical versions</p>
+                            </div>
+                        ) : (
+                            revisions.map((rev) => {
+                                const isLatest = rev.revision_number === Math.max(...revisions.map(r => r.revision_number));
+                                const isActive = activeRevisionNum === rev.revision_number || (!activeRevisionNum && isLatest);
+                                return (
+                                    <div
+                                        key={rev.name}
+                                        className={`history-card ${isActive ? 'active' : ''}`}
+                                        onClick={() => setActiveRevisionNum(rev.revision_number)}
+                                    >
+                                        {isLatest && <div className="latest-version-badge">LATEST</div>}
+                                        <div className="history-card-header">
+                                            <span className="history-rev-tag">v{rev.revision_number}</span>
+                                            <span className="history-time-tag">{timeAgo(rev.creation)}</span>
+                                        </div>
+                                        <div className="history-card-body">
+                                            <span className="history-owner">{rev.owner}</span>
+                                            {rev.revision_notes && <p className="history-notes">{rev.revision_notes}</p>}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                    {activeRevisionNum && (
+                        <div style={{ padding: '12px', borderTop: '1px solid var(--border-light)' }}>
+                            <button
+                                className="asset-action-btn"
+                                style={{ width: '100%', justifyContent: 'center' }}
+                                onClick={() => setActiveRevisionNum(undefined)}
+                            >
+                                Back to Latest
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* 2. Media column (Center) */}
                 <div className="asset-media-col">
                     {/* Floating toolbar */}
                     {!isVideo && (
@@ -535,13 +798,54 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                             <div className="annotator-loading-overlay"><div className="loading-spinner" /></div>
                         )}
                     </div>
+
+                    {/* Content Brief panel below canvas — editable */}
+                    <div className="content-brief-panel">
+                        <div className="content-brief-header">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" />
+                            </svg>
+                            <span>Content Brief — Revision {annotationData?.message?.revision_number || 'Latest'}</span>
+                            <div className="content-brief-actions">
+                                {briefSaved && <span className="brief-saved-badge">✓ Saved</span>}
+                                {briefDirty && (
+                                    <button
+                                        className="brief-save-btn"
+                                        onClick={handleSaveBrief}
+                                        disabled={briefSaving}
+                                    >
+                                        {briefSaving ? 'Saving…' : 'Save'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="content-brief-editor">
+                            <ReactQuill
+                                theme="snow"
+                                value={editedBrief}
+                                onChange={handleBriefChange}
+                                placeholder="No content brief yet. Add the intended text or copy for this asset…"
+                                modules={{
+                                    toolbar: [
+                                        ['bold', 'italic', 'underline'],
+                                        [{ list: 'ordered' }, { list: 'bullet' }],
+                                        ['link'],
+                                        ['clean']
+                                    ]
+                                }}
+                            />
+                        </div>
+                    </div>
                 </div>
 
-                {/* Comments panel */}
+                {/* 3. Team Discussion Panel (Right) */}
                 <div className="comments-panel">
                     <div className="comments-header">
-                        <h3><span style={{ verticalAlign: 'middle', marginRight: 8 }}><ChatIcon /></span>Comments ({annotations.length})</h3>
-                        {/* Replaced 'Sort' with hidden or minimal UI if needed, removing the 'weird' button */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <ChatIcon />
+                            <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Team Discussion</h3>
+                        </div>
+                        <span className="tab-count">{annotations.length}</span>
                     </div>
 
                     <div className="comments-list">
@@ -591,13 +895,26 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                                 <button className="pin-clear" onClick={() => setPendingAnnotation(null)}>✕</button>
                             </div>
                         )}
-                        <div className="comment-input-row">
+                        <div className="comment-input-row" style={{ position: 'relative' }}>
+                            {showMentions && mentionUsers.length > 0 && (
+                                <div className="mentions-list">
+                                    {mentionUsers.map(u => (
+                                        <div key={u.name} className="mention-item" onClick={() => handleSelectMention(u)}>
+                                            <img src={u.user_image || 'https://ui-avatars.com/api/?name=' + u.full_name} className="mention-avatar" alt={u.full_name} />
+                                            <div>
+                                                <div className="mention-name">{u.full_name}</div>
+                                                <div className="mention-id">@{u.name}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                             <textarea
                                 ref={commentInputRef}
                                 className="comment-textarea"
                                 placeholder="Add a comment... Type @ to mention"
                                 value={comment}
-                                onChange={(e) => setComment(e.target.value)}
+                                onChange={handleCommentChange}
                                 onKeyDown={handleKeyDown}
                                 rows={1}
                             />
