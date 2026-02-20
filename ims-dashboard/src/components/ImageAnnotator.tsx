@@ -313,6 +313,10 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                 // Force a refresh of local data to confirm persistence
                 refreshAnnotations();
                 setTimeout(() => setBriefSaved(false), 3000);
+
+                // If a different revision was returned (e.g. Revision 1 was protected),
+                // we should probably stay on latest or update UI.
+                // Mutate already handles this by fetching latest if activeRevisionNum is null.
             } else {
                 console.error('Save failed', resp);
                 alert(`Save failed: ${resp.message || 'Unknown error'}`);

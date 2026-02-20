@@ -529,6 +529,36 @@ def submit_annotation(
         latest_revision = revision_doc.name
 
     revision = frappe.get_doc("IMS Asset Revision", latest_revision)
+
+    # Protection: Never overwrite Revision 1 (it's the initial baseline)
+    if revision.revision_number == 1:
+        # Check if Revision 2 or higher already exists
+        has_later = frappe.db.get_value(
+            "IMS Asset Revision",
+            {"marketing_asset": marketing_asset, "revision_number": [">", 1]},
+            "name",
+        )
+        if not has_later:
+            # Create Revision 2 as the first 'working' revision
+            revision = frappe.get_doc(
+                {
+                    "doctype": "IMS Asset Revision",
+                    "marketing_asset": marketing_asset,
+                    "revision_number": 2,
+                    "revision_file": revision.revision_file,
+                    "annotations": revision.annotations,
+                    "content_brief": revision.content_brief,
+                    "revision_notes": "First working iteration.",
+                }
+            )
+            revision.insert(ignore_permissions=True)
+            frappe.db.commit()
+            latest_revision = revision.name
+        else:
+            # Use the existing later revision
+            latest_revision = has_later
+            revision = frappe.get_doc("IMS Asset Revision", latest_revision)
+
     existing_annotations = json.loads(revision.annotations or "[]")
 
     annotation = {
@@ -886,6 +916,7 @@ def upload_revision(marketing_asset: str, notes: str = "") -> dict:
     # Update parent asset
     asset = frappe.get_doc("IMS Marketing Asset", marketing_asset)
     asset.latest_file = file_url
+    asset.description = prev_content_brief or ""
     asset.save(ignore_permissions=True)
     frappe.db.commit()
 
@@ -946,11 +977,49 @@ def save_content_brief(
     # Permission check via parent asset
     frappe.has_permission("IMS Marketing Asset", "read", marketing_asset, throw=True)
 
-    # Fetch doc and update using robust doc-based save
+    # Fetch doc
     try:
         rev_doc = frappe.get_doc("IMS Asset Revision", revision_name)
-        rev_doc.content_brief = content_brief
-        rev_doc.save(ignore_permissions=True)
+
+        # Protection: Never overwrite Revision 1
+        if rev_doc.revision_number == 1:
+            # Try to find Revision 2 or create it
+            rev2_name = frappe.db.get_value(
+                "IMS Asset Revision",
+                {"marketing_asset": marketing_asset, "revision_number": 2},
+                "name",
+            )
+            if not rev2_name:
+                # Create Revision 2
+                new_rev = frappe.get_doc(
+                    {
+                        "doctype": "IMS Asset Revision",
+                        "marketing_asset": marketing_asset,
+                        "revision_number": 2,
+                        "revision_file": rev_doc.revision_file,
+                        "annotations": rev_doc.annotations,
+                        "content_brief": content_brief,
+                        "revision_notes": "Modified text version.",
+                    }
+                )
+                new_rev.insert(ignore_permissions=True)
+                rev_doc = new_rev
+                revision_name = new_rev.name
+            else:
+                # Update existing Revision 2 instead
+                rev_doc = frappe.get_doc("IMS Asset Revision", rev2_name)
+                rev_doc.content_brief = content_brief
+                rev_doc.save(ignore_permissions=True)
+                revision_name = rev2_name
+        else:
+            # Normal update for Revision 2+
+            rev_doc.content_brief = content_brief
+            rev_doc.save(ignore_permissions=True)
+
+        # Sync back to parent Asset
+        asset_doc = frappe.get_doc("IMS Marketing Asset", marketing_asset)
+        asset_doc.description = content_brief
+        asset_doc.save(ignore_permissions=True)
         frappe.db.commit()
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), _("Content Brief Save Error"))
