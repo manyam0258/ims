@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { useFrappeGetCall, useFrappePostCall } from 'frappe-react-sdk';
+import { useFrappeGetCall, useFrappePostCall, useFrappeFileUpload } from 'frappe-react-sdk';
 import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import katex from 'katex';
@@ -165,6 +165,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     const containerRef = useRef<HTMLDivElement>(null);
     const commentInputRef = useRef<HTMLTextAreaElement>(null);
     const revisionInputRef = useRef<HTMLInputElement>(null);
+    const { upload } = useFrappeFileUpload();
 
     // Tool & Sidebar state
     const [activeTool, setActiveTool] = useState<ToolMode>('cursor');
@@ -218,6 +219,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
     const { call: submitAnnotation } = useFrappePostCall('ims.api.submit_annotation');
     const { call: saveBriefApi } = useFrappePostCall('ims.api.save_content_brief');
+    const { call: notifyRevision } = useFrappePostCall('ims.api.upload_revision');
 
     // Fetch users for mention
     const { data: mentionData } = useFrappeGetCall<{ message: { users: { name: string; full_name: string; user_image?: string }[] } }>(
@@ -238,35 +240,40 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
         const file = e.target.files[0];
         setUploadingRevision(true);
 
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('marketing_asset', assetName);
-        formData.append('notes', 'Uploaded via Dashboard');
-
-        // CSRF handling if needed, but in standard Desk app session it often works with cookies.
-        // If we are in a pure React app served by Frappe, cookies are present.
-
         try {
-            const res = await fetch('/api/method/ims.api.upload_revision', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Frappe-CSRF-Token': (window as any).csrf_token || '',
+            // Use SDK for file upload which handles CSRF
+            const uploadRes = await upload(file, {
+                is_private: 1,
+                doctype: 'IMS Marketing Asset',
+                docname: assetName,
+                fieldname: 'latest_file'
+            } as any);
+
+            if (uploadRes && uploadRes.name) {
+                // The backend API ims.api.upload_revision is actually what creates the Revision record
+                // But upload_file alone might not be enough if it needs the 'marketing_asset' link in a specific way.
+                // However, the original code called ims.api.upload_revision with FormData.
+                // If we use SDK upload, we might still need to call the custom API if it does more than just uploading.
+                // Let's call the custom API with the uploaded file URL.
+
+                const data = await notifyRevision({
+                    marketing_asset: assetName,
+                    file_url: uploadRes.file_url,
+                    notes: 'Uploaded via Dashboard'
+                });
+
+                if (data.message && data.message.status === 'success') {
+                    refreshAsset();
+                    refreshAnnotations();
+                    refreshWorkflow();
+                    alert('New revision uploaded successfully.');
+                } else {
+                    alert('Upload failed: ' + (data.message?.message || 'Unknown error'));
                 }
-            });
-            const data = await res.json();
-            if (data.message && data.message.status === 'success') {
-                refreshAsset(); // Update the image
-                refreshAnnotations(); // Reload annotations (might be empty/different for new revision)
-                refreshWorkflow();
-                alert('New revision uploaded successfully.');
-            } else {
-                console.error('Upload failed', data);
-                alert('Upload failed: ' + (data.message || data.exception));
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Upload error', err);
-            alert('An error occurred during upload.');
+            alert('An error occurred during upload: ' + (err.message || 'Unknown error'));
         } finally {
             setUploadingRevision(false);
             if (revisionInputRef.current) revisionInputRef.current.value = '';

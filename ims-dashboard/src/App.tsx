@@ -143,9 +143,19 @@ function AppContent() {
 	);
 }
 
+const getCsrfToken = () => {
+	return (window as any).csrf_token || "";
+};
+
 function App() {
 	return (
-		<FrappeProvider>
+		<FrappeProvider
+			url={window.location.origin}
+			customHeaders={{
+				'X-Frappe-CSRF-Token': getCsrfToken()
+			}}
+			enableSocket={false}
+		>
 			<AppContent />
 		</FrappeProvider>
 	);

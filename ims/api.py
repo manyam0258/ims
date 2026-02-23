@@ -990,33 +990,35 @@ def upload_revision(marketing_asset: str, notes: str = "") -> dict:
     if not frappe.db.exists("IMS Marketing Asset", marketing_asset):
         frappe.throw(_("Asset not found"), frappe.DoesNotExistError)
 
-    # Check for file
-    if "file" not in frappe.request.files:
-        frappe.throw(_("Please attach a file"))
+    file_url = None
+    if "file" in frappe.request.files:
+        file = frappe.request.files["file"]
 
-    file = frappe.request.files["file"]
+        # Ensure unique filename to prevent FileExistsError
+        from frappe.utils import now_datetime
 
-    # Ensure unique filename to prevent FileExistsError
-    import textwrap
-    from frappe.utils import now_datetime
+        timestamp = now_datetime().strftime("%Y%m%d%H%M%S")
+        original_name = file.filename
+        name_parts = original_name.rsplit(".", 1)
 
-    timestamp = now_datetime().strftime("%Y%m%d%H%M%S")
-    original_name = file.filename
-    name_parts = original_name.rsplit(".", 1)
+        if len(name_parts) == 2:
+            new_filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}"
+        else:
+            new_filename = f"{original_name}_{timestamp}"
 
-    if len(name_parts) == 2:
-        new_filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}"
+        file.filename = new_filename
+
+        # Force uploaded file to be public
+        frappe.form_dict["is_private"] = 0
+        from frappe.handler import upload_file
+
+        file_doc = upload_file()
+        file_url = file_doc.file_url
     else:
-        new_filename = f"{original_name}_{timestamp}"
+        file_url = frappe.form_dict.get("file_url")
 
-    file.filename = new_filename
-
-    # Force uploaded file to be public
-    frappe.form_dict["is_private"] = 0
-    from frappe.handler import upload_file
-
-    file_doc = upload_file()
-    file_url = file_doc.file_url
+    if not file_url:
+        frappe.throw(_("Please attach a file"))
 
     # Get latest revision (number + content_brief to carry forward)
     prev_list = frappe.get_all(

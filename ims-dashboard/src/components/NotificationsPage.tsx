@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useFrappeGetCall } from 'frappe-react-sdk';
+import { useFrappeGetCall, useFrappePostCall } from 'frappe-react-sdk';
 
 interface Notification {
     name: string;
@@ -26,19 +26,15 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ refreshKey }) => 
         `notifications-${refreshKey}-${localRefresh}`,
     );
 
+    const { call: markAllRead } = useFrappePostCall('ims.api.mark_notifications_read');
+
     const notifications = data?.message?.notifications || [];
     const unreadCount = data?.message?.unread_count || 0;
 
     const handleMarkAllRead = async () => {
         setMarkingRead(true);
         try {
-            await fetch('/api/method/ims.api.mark_notifications_read', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Frappe-CSRF-Token': (window as any).csrf_token || getCsrfToken(),
-                },
-            });
+            await markAllRead({});
             setLocalRefresh((r) => r + 1);
         } catch { /* ignore */ }
         finally { setMarkingRead(false); }
@@ -131,10 +127,7 @@ function stripHtml(html: string): string {
     return html.replace(/<[^>]*>/g, '').substring(0, 200);
 }
 
-function getCsrfToken(): string {
-    const meta = document.querySelector('meta[name="csrf_token"]');
-    return meta ? meta.getAttribute('content') || '' : '';
-}
+
 
 // SVG Icons
 function WorkflowIcon() {

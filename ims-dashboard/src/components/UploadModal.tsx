@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { useFrappeGetCall, useFrappePostCall, useFrappeFileUpload } from 'frappe-react-sdk';
 import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import katex from 'katex';
@@ -179,9 +180,28 @@ const ProjectLinkField: React.FC<ProjectLinkFieldProps> = ({ value, onChange }) 
     const [query, setQuery] = useState('');
     const [isOpen, setIsOpen] = useState(false);
     const [options, setOptions] = useState<ProjectOption[]>([]);
-    const [loading, setLoading] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    const { data: searchData, isLoading: loading } = useFrappeGetCall<{
+        message: ProjectOption[] | { projects: ProjectOption[] }
+    }>(
+        'ims.api.search_projects',
+        { query: query, limit: 10 },
+        isOpen ? `project-search-${query}` : null
+    );
+
+    useEffect(() => {
+        if (searchData) {
+            let projects: ProjectOption[] = [];
+            if (Array.isArray(searchData.message)) {
+                projects = searchData.message;
+            } else if ((searchData.message as any)?.projects) {
+                projects = (searchData.message as any).projects;
+            }
+            setOptions(projects);
+        }
+    }, [searchData]);
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -191,43 +211,9 @@ const ProjectLinkField: React.FC<ProjectLinkFieldProps> = ({ value, onChange }) 
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const searchProjects = useCallback(async (searchTerm: string) => {
-        setLoading(true);
-        try {
-            const res = await fetch(
-                `/api/method/ims.api.search_projects?query=${encodeURIComponent(searchTerm)}&limit=10`,
-                {
-                    headers: { 'X-Frappe-CSRF-Token': (window as any).csrf_token || getCsrfToken() },
-                }
-            );
-            if (!res.ok) {
-                const text = await res.text();
-                throw new Error(`Server returned ${res.status}: ${text.slice(0, 100)}`);
-            }
-            const data = await res.json();
-            // Handle both simplified (list) and detailed (dict) response formats
-            let projects = [];
-            if (Array.isArray(data.message)) {
-                projects = data.message;
-            } else if (data.message?.projects) {
-                projects = data.message.projects;
-            } else if (Array.isArray(data)) {
-                projects = data;
-            }
-            setOptions(projects);
-        } catch (err) {
-            console.error('Project search failed:', err);
-            setOptions([]);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
     useEffect(() => {
-        if (isOpen) {
-            searchProjects(query);
-        }
-    }, [isOpen, query, searchProjects]);
+        // Search is now handled by useFrappeGetCall hook
+    }, [isOpen, query]);
 
     const handleSelect = (opt: ProjectOption) => {
         onChange(opt.name);
@@ -303,6 +289,9 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuccess })
     const [error, setError] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    const { upload } = useFrappeFileUpload();
+    const { call: createAsset } = useFrappePostCall('ims.api.upload_marketing_asset');
+
     if (!isOpen) return null;
 
     const handleFileChange = (selectedFile: File) => {
@@ -349,49 +338,26 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onSuccess })
 
         try {
             // Step 1: Upload file
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('is_private', '1');
+            const uploadRes = await upload(file, {
+                is_private: 1,
+            } as any);
 
-            const uploadRes = await fetch('/api/method/upload_file', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Frappe-CSRF-Token': (window as any).csrf_token || getCsrfToken(),
-                },
-            });
-
-            const uploadData = await uploadRes.json();
-
-            if (!uploadRes.ok || uploadData.exc) {
-                throw new Error(uploadData._server_messages || 'File upload failed.');
-            }
-
-            const fileUrl = uploadData.message?.file_url;
+            const fileUrl = uploadRes?.file_url;
             if (!fileUrl) {
                 throw new Error('No file URL returned from upload.');
             }
 
             // Step 2: Create the IMS Marketing Asset document
-            const createRes = await fetch('/api/method/ims.api.upload_marketing_asset', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Frappe-CSRF-Token': (window as any).csrf_token || getCsrfToken(),
-                },
-                body: JSON.stringify({
-                    asset_title: assetTitle.trim(),
-                    campaign: campaign.trim(),
-                    project: project,
-                    description: description.trim(),
-                    expiry_date: expiryDate,
-                    file_url: fileUrl,
-                }),
+            const createData = await createAsset({
+                asset_title: assetTitle.trim(),
+                campaign: campaign.trim(),
+                project: project,
+                description: description.trim(),
+                expiry_date: expiryDate,
+                file_url: fileUrl,
             });
 
-            const createData = await createRes.json();
-
-            if (!createRes.ok || createData.exc) {
+            if (createData.exc) {
                 throw new Error(createData._server_messages || 'Asset creation failed.');
             }
 
@@ -552,9 +518,6 @@ function formatFileSize(bytes: number): string {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-function getCsrfToken(): string {
-    const meta = document.querySelector('meta[name="csrf_token"]');
-    return meta ? meta.getAttribute('content') || '' : '';
-}
+
 
 export default UploadModal;

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useFrappeGetCall } from 'frappe-react-sdk';
 
 interface TopBarProps {
     onUploadClick: () => void;
@@ -18,10 +19,8 @@ const TopBar: React.FC<TopBarProps> = ({ onUploadClick, onAssetClick, onProjectC
     const [searchOpen, setSearchOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
-    const [loading, setLoading] = useState(false);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
-    const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
     // Keyboard shortcut: Ctrl/Cmd + K
     useEffect(() => {
@@ -49,49 +48,41 @@ const TopBar: React.FC<TopBarProps> = ({ onUploadClick, onAssetClick, onProjectC
         }
     }, [searchOpen]);
 
-    // Debounced search
-    const doSearch = useCallback(async (q: string) => {
-        if (!q.trim()) {
-            setResults([]);
-            return;
+    // Use SDK for search
+    const { data: searchData, isLoading: loading } = useFrappeGetCall<{
+        message: {
+            assets?: any[];
+            projects?: any[];
         }
-        setLoading(true);
-        try {
-            const res = await fetch(`/api/method/ims.api.search_assets?query=${encodeURIComponent(q)}&limit=10`, {
-                headers: { 'X-Frappe-CSRF-Token': (window as any).csrf_token || getCsrfToken() },
-            });
-            const data = await res.json();
-            if (data.message) {
-                const mapped: SearchResult[] = [
-                    ...(data.message.assets || []).map((a: any) => ({
-                        name: a.name,
-                        title: a.asset_title,
-                        type: 'asset' as const,
-                        status: a.status,
-                        latest_file: a.latest_file,
-                    })),
-                    ...(data.message.projects || []).map((p: any) => ({
-                        name: p.name,
-                        title: p.project_title,
-                        type: 'project' as const,
-                        status: p.status,
-                    })),
-                ];
-                setResults(mapped);
-                setSelectedIndex(0);
-            }
-        } catch {
-            /* ignore */
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+    }>(
+        'ims.api.search_assets',
+        { query: query, limit: 10 },
+        query.length >= 2 ? `search-${query}` : null
+    );
 
-    const handleInputChange = (val: string) => {
-        setQuery(val);
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => doSearch(val), 250);
-    };
+    useEffect(() => {
+        if (searchData?.message) {
+            const mapped: SearchResult[] = [
+                ...(searchData.message.assets || []).map((a: any) => ({
+                    name: a.name,
+                    title: a.asset_title,
+                    type: 'asset' as const,
+                    status: a.status,
+                    latest_file: a.latest_file,
+                })),
+                ...(searchData.message.projects || []).map((p: any) => ({
+                    name: p.name,
+                    title: p.project_title,
+                    type: 'project' as const,
+                    status: p.status,
+                })),
+            ];
+            setResults(mapped);
+            setSelectedIndex(0);
+        } else {
+            setResults([]);
+        }
+    }, [searchData]);
 
     const handleSelect = (result: SearchResult) => {
         setSearchOpen(false);
@@ -147,7 +138,7 @@ const TopBar: React.FC<TopBarProps> = ({ onUploadClick, onAssetClick, onProjectC
                                 type="text"
                                 placeholder="Search assets, projects..."
                                 value={query}
-                                onChange={(e) => handleInputChange(e.target.value)}
+                                onChange={(e) => setQuery(e.target.value)}
                                 onKeyDown={handleKeyDown}
                             />
                             <kbd className="cmd-esc" onClick={() => setSearchOpen(false)}>ESC</kbd>
@@ -244,10 +235,7 @@ const TopBar: React.FC<TopBarProps> = ({ onUploadClick, onAssetClick, onProjectC
 function isImage(url: string) {
     return /\.(png|jpg|jpeg|gif|svg|webp|bmp)(\?|$)/i.test(url || '');
 }
-function getCsrfToken(): string {
-    const meta = document.querySelector('meta[name="csrf_token"]');
-    return meta ? meta.getAttribute('content') || '' : '';
-}
+
 
 // SVG Icons
 function SearchSvg() {
