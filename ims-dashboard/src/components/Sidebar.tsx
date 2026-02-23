@@ -22,6 +22,14 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, dar
     );
     const unreadCount = notifData?.message?.unread_count || 0;
 
+    // Fetch User Role for dynamic display
+    const { data: userData } = useFrappeGetCall<{ message: { primary_role: string } }>(
+        'ims.api.get_current_user',
+        {},
+        `sidebar-user-${userName}`,
+    );
+    const userRole = userData?.message?.primary_role || 'User';
+
     // Close menu on outside click
     useEffect(() => {
         const handleClick = (e: MouseEvent) => {
@@ -46,10 +54,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, dar
         <aside className="sidebar">
             <div className="sidebar-brand">
                 <div className="brand-logo">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                        <circle cx="8.5" cy="8.5" r="1.5" />
-                        <polyline points="21 15 16 10 5 21" />
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="2" y="2" width="20" height="20" rx="4" fill="white" stroke="black" strokeWidth="2" />
+                        <path d="M4 18L9 13L13 17L20 10" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        <circle cx="8" cy="8" r="2" fill="black" />
                     </svg>
                 </div>
                 <span className="brand-text">IMS</span>
@@ -82,7 +90,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, dar
                         </div>
                         <div className="user-details">
                             <span className="user-name">{userName}</span>
-                            <span className="user-role">Administrator</span>
+                            <span className="user-role">{userRole}</span>
                         </div>
                         <span className="user-expand">{userMenuOpen ? '▾' : '▴'}</span>
                     </div>
@@ -92,6 +100,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, dar
                             <a className="dropdown-item" href="/app/user" target="_blank" rel="noopener">
                                 <UserIcon /> View Profile
                             </a>
+                            <a className="dropdown-item" href="/apps">
+                                <GridIcon /> Apps
+                            </a>
+
                             <a className="dropdown-item" href="/app" target="_blank" rel="noopener">
                                 <LayoutIcon /> Switch to Desk
                             </a>
@@ -139,6 +151,9 @@ function LogoutIcon() {
 }
 function LayoutIcon() {
     return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg>;
+}
+function GridIcon() {
+    return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>;
 }
 
 export default Sidebar;

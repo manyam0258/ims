@@ -52,15 +52,14 @@ fixtures = [
 ]
 
 # Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "ims",
-# 		"logo": "/assets/ims/logo.png",
-# 		"title": "Image Management System",
-# 		"route": "/ims",
-# 		"has_permission": "ims.api.permission.has_app_permission"
-# 	}
-# ]
+add_to_apps_screen = [
+    {
+        "name": "ims",
+        "logo": "/assets/ims/logo_bw.svg",
+        "title": "IMS Dashboard",
+        "route": "/ims-dashboard",
+    }
+]
 
 # Includes in <head>
 # ------------------
