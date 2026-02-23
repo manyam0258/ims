@@ -107,7 +107,16 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, dar
                             <a className="dropdown-item" href="/app" target="_blank" rel="noopener">
                                 <LayoutIcon /> Switch to Desk
                             </a>
-                            <a className="dropdown-item" href="/api/method/logout" >
+                            <a
+                                className="dropdown-item"
+                                href="/logout"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    fetch('/api/method/logout').finally(() => {
+                                        window.location.href = '/login';
+                                    });
+                                }}
+                            >
                                 <LogoutIcon /> Sign Out
                             </a>
                         </div>
