@@ -202,14 +202,76 @@ def search_assets(query: str = "", limit: int = 10) -> dict:
     }
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist(allow_guest=False)
 def get_current_user():
-    """Debug session user."""
+    """Get current session user info with roles."""
+    roles = frappe.get_roles()
+
+    # Exclude standard roles to find a meaningful one
+    exclude_roles = ["All", "Guest", "System Manager", "Administrator"]
+    meaningful_roles = [r for r in roles if r not in exclude_roles]
+
+    primary_role = (
+        meaningful_roles[0] if meaningful_roles else (roles[0] if roles else "User")
+    )
+
     return {
         "user": frappe.session.user,
+        "full_name": frappe.utils.get_fullname(frappe.session.user),
         "is_guest": frappe.session.user == "Guest",
-        "roles": frappe.get_roles(),
+        "roles": roles,
+        "primary_role": primary_role,
     }
+
+
+@frappe.whitelist()
+def get_accessible_apps():
+    """Returns a list of unique authorized apps (not just individual workspaces)"""
+    from frappe.desk.desktop import get_workspace_sidebar_items
+
+    workspace_data = get_workspace_sidebar_items()
+    pages = workspace_data.get("pages", [])
+
+    # Get module to app mapping
+    modules = frappe.get_all("Module Def", fields=["name", "app_name", "module_name"])
+    module_to_app = {m.name: m.app_name for m in modules}
+
+    authorized_apps = set()
+    for page in pages:
+        app_name = module_to_app.get(page.get("module"))
+        if app_name:
+            authorized_apps.add(app_name)
+
+    app_list = []
+
+    # Manual sort and label mapping to match user expectations
+    priority_apps = ["ims", "erpnext", "hrms"]
+    sorted_apps = sorted(
+        list(authorized_apps),
+        key=lambda x: priority_apps.index(x) if x in priority_apps else 99,
+    )
+
+    for app in sorted_apps:
+        title_hook = frappe.get_hooks("app_title", app_name=app)
+        title = title_hook[0] if title_hook else app.replace("_", " ").title()
+
+        # UI Overrides
+        if app == "ims":
+            label = "IMS Dashboard"
+            icon = "ims-bw"
+            route = "/ims-dashboard"
+        elif app == "frappe":
+            label = "Frappe Desk"
+            icon = "frappe"
+            route = "/app"
+        else:
+            label = title
+            icon = app
+            route = "/app"
+
+        app_list.append({"name": app, "label": label, "icon": icon, "route": route})
+
+    return {"apps": app_list}
 
 
 @frappe.whitelist(allow_guest=True)

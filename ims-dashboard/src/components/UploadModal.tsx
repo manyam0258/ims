@@ -1,6 +1,22 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import ReactQuill from 'react-quill-new';
+import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+import hljs from 'highlight.js';
+import 'highlight.js/styles/github.css';
+
+// Global availability for Quill modules
+if (typeof window !== 'undefined') {
+    (window as any).katex = katex;
+    (window as any).hljs = hljs;
+}
+
+// Ensure underline blot is registered to avoid CI failures
+const Underline = Quill.import('formats/underline');
+if (Underline) {
+    Quill.register('formats/underline', Underline, true);
+}
 
 interface UploadModalProps {
     isOpen: boolean;

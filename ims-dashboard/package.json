@@ -13,6 +13,8 @@
   "dependencies": {
     "frappe-react-sdk": "^1.14.0",
     "frappe-ui": "^0.1.262",
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.28",
     "phosphor-react": "^1.4.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -20,6 +22,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@types/highlight.js": "^9.12.4",
+    "@types/katex": "^0.16.8",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
