@@ -144,7 +144,11 @@ function AppContent() {
 }
 
 const getCsrfToken = () => {
-	return (window as any).csrf_token || "";
+	const cookieValue = document.cookie
+		.split('; ')
+		.find(row => row.trim().startsWith('csrf_token='))
+		?.split('=')[1];
+	return cookieValue || (window as any).csrf_token || "";
 };
 
 function App() {
