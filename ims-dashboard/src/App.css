@@ -3237,6 +3237,110 @@ body {
   stroke-dasharray: 1 0.5;
 }
 
+/* ── Line / Arrow annotation ── */
+.annotation-line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 0.4;
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: pointer;
+  transition: stroke-width 0.15s, stroke-opacity 0.15s;
+}
+
+.annotation-line.hovered {
+  stroke-width: 0.7;
+  stroke: #ef4444;
+}
+
+/* ── Oval annotation ── */
+.annotation-oval {
+  fill: rgba(37, 99, 235, 0.08);
+  stroke: var(--primary);
+  stroke-width: 0.35;
+  pointer-events: visiblePainted;
+  cursor: pointer;
+  transition: stroke-width 0.15s, fill 0.15s;
+}
+
+.annotation-oval.hovered {
+  stroke-width: 0.6;
+  stroke: #ef4444;
+  fill: rgba(239, 68, 68, 0.1);
+}
+
+/* ── Live drawing previews ── */
+.drawing-line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 0.35;
+  stroke-dasharray: 0.8 0.4;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.drawing-oval {
+  fill: rgba(37, 99, 235, 0.06);
+  stroke: var(--primary);
+  stroke-width: 0.35;
+  stroke-dasharray: 0.8 0.4;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+/* ── Color picker ── */
+.color-picker-wrapper {
+  position: relative;
+}
+
+.color-swatch-preview {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  transition: transform 0.15s;
+}
+
+.color-swatch-trigger:hover .color-swatch-preview {
+  transform: scale(1.15);
+}
+
+.color-picker-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 30;
+}
+
+.color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s;
+  padding: 0;
+}
+
+.color-swatch:hover {
+  transform: scale(1.2);
+}
+
+.color-swatch.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-primary);
+}
+
 /* ===========================
    Responsive
    =========================== */

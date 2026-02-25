@@ -27,8 +27,9 @@ interface Annotation {
     y: number;
     width: number;
     height: number;
-    annotation_type?: string;       // point | rect | freehand
+    annotation_type?: string;       // point | rect | freehand | line | arrow | oval
     path?: { x: number; y: number }[];
+    color?: string;
     comment: string;
     author: string;
     author_name: string;
@@ -65,7 +66,7 @@ interface ImageAnnotatorProps {
     onBack: () => void;
 }
 
-type ToolMode = 'cursor' | 'rect' | 'pen';
+type ToolMode = 'cursor' | 'rect' | 'pen' | 'line' | 'arrow' | 'oval';
 
 /* ── SVG Icons ── */
 const BackIcon = () => (
@@ -119,6 +120,26 @@ const PenIcon = () => (
         <path d="M12 19l7-7 3 3-7 7-3-3z" /><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" /><path d="M2 2l7.586 7.586" /><circle cx="11" cy="11" r="2" />
     </svg>
 );
+const LineIcon = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="5" y1="19" x2="19" y2="5" />
+    </svg>
+);
+const ArrowIcon = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="5" y1="19" x2="19" y2="5" /><polyline points="10 5 19 5 19 14" />
+    </svg>
+);
+const OvalIcon = () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <ellipse cx="12" cy="12" rx="10" ry="7" />
+    </svg>
+);
+
+const ANNOTATION_COLORS = [
+    '#2563eb', '#ef4444', '#22c55e', '#f59e0b',
+    '#8b5cf6', '#ec4899', '#06b6d4', '#f97316',
+];
 
 /* ── Helpers ── */
 function timeAgo(dateStr: string): string {
@@ -170,6 +191,8 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     // Tool & Sidebar state
     const [activeTool, setActiveTool] = useState<ToolMode>('cursor');
     const [activeRevisionNum, setActiveRevisionNum] = useState<number | undefined>(undefined);
+    const [strokeColor, setStrokeColor] = useState('#2563eb');
+    const [showColorPicker, setShowColorPicker] = useState(false);
 
     // Rect drag state
     const [isDragging, setIsDragging] = useState(false);
@@ -185,6 +208,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
         x: number; y: number; width: number; height: number;
         annotation_type: string;
         path?: { x: number; y: number }[];
+        color?: string;
     } | null>(null);
 
     const [hoveredAnnotation, setHoveredAnnotation] = useState<string | null>(null);
@@ -379,7 +403,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
             if (activeTool === 'pen') {
                 setIsDrawing(true);
                 setCurrentPath([coords]);
-            } else if (activeTool === 'rect') {
+            } else if (activeTool === 'rect' || activeTool === 'line' || activeTool === 'arrow' || activeTool === 'oval') {
                 setDragStart(coords);
                 setIsDragging(false);
             } else {
@@ -388,7 +412,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                 setIsDragging(false);
             }
         },
-        [getPercentCoords, activeTool, isVideo]
+        [getPercentCoords, activeTool, isVideo, isViewingLatest]
     );
 
     const handleMouseMove = useCallback(
@@ -398,14 +422,14 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
 
             if (activeTool === 'pen' && isDrawing) {
                 setCurrentPath((prev) => [...prev, coords]);
-            } else if ((activeTool === 'rect' || activeTool === 'cursor') && dragStart) {
+            } else if (['rect', 'cursor', 'line', 'arrow', 'oval'].includes(activeTool) && dragStart) {
                 if (Math.abs(coords.x - dragStart.x) > 2 || Math.abs(coords.y - dragStart.y) > 2) {
                     setIsDragging(true);
                     setDragCurrent(coords);
                 }
             }
         },
-        [getPercentCoords, activeTool, isDrawing, dragStart, isVideo]
+        [getPercentCoords, activeTool, isDrawing, dragStart, isVideo, isViewingLatest]
     );
 
     const handleMouseUp = useCallback(
@@ -426,16 +450,35 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                     height: 0,
                     annotation_type: 'freehand',
                     path: [...currentPath],
+                    color: strokeColor,
                 });
                 setIsDrawing(false);
                 setCurrentPath([]);
+                setTimeout(() => commentInputRef.current?.focus(), 50);
+            } else if ((activeTool === 'line' || activeTool === 'arrow') && isDragging && dragStart && dragCurrent) {
+                setPendingAnnotation({
+                    x: dragStart.x,
+                    y: dragStart.y,
+                    width: 0,
+                    height: 0,
+                    annotation_type: activeTool,
+                    path: [{ x: dragStart.x, y: dragStart.y }, { x: dragCurrent.x, y: dragCurrent.y }],
+                    color: strokeColor,
+                });
+                setTimeout(() => commentInputRef.current?.focus(), 50);
+            } else if (activeTool === 'oval' && isDragging && dragStart && dragCurrent) {
+                const x = Math.min(dragStart.x, dragCurrent.x);
+                const y = Math.min(dragStart.y, dragCurrent.y);
+                const w = Math.abs(dragCurrent.x - dragStart.x);
+                const h = Math.abs(dragCurrent.y - dragStart.y);
+                setPendingAnnotation({ x, y, width: w, height: h, annotation_type: 'oval', color: strokeColor });
                 setTimeout(() => commentInputRef.current?.focus(), 50);
             } else if (activeTool === 'rect' && isDragging && dragStart && dragCurrent) {
                 const x = Math.min(dragStart.x, dragCurrent.x);
                 const y = Math.min(dragStart.y, dragCurrent.y);
                 const w = Math.abs(dragCurrent.x - dragStart.x);
                 const h = Math.abs(dragCurrent.y - dragStart.y);
-                setPendingAnnotation({ x, y, width: w, height: h, annotation_type: 'rect' });
+                setPendingAnnotation({ x, y, width: w, height: h, annotation_type: 'rect', color: strokeColor });
                 setTimeout(() => commentInputRef.current?.focus(), 50);
             } else if (dragStart) {
                 const coords = getPercentCoords(e);
@@ -447,7 +490,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
             setDragStart(null);
             setDragCurrent(null);
         },
-        [activeTool, isDrawing, currentPath, isDragging, dragStart, dragCurrent, getPercentCoords, isVideo]
+        [activeTool, isDrawing, currentPath, isDragging, dragStart, dragCurrent, getPercentCoords, isVideo, isViewingLatest, strokeColor]
     );
 
     /* ── Submit comment ── */
@@ -465,8 +508,11 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                 comment: comment.trim(),
                 annotation_type: ann.annotation_type,
             };
-            if (ann.annotation_type === 'freehand' && ann.path) {
+            if (ann.path && ann.path.length > 0) {
                 payload.path = JSON.stringify(ann.path);
+            }
+            if (ann.color) {
+                payload.color = ann.color;
             }
             await submitAnnotation(payload);
             setComment('');
@@ -572,7 +618,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
     }
 
     const fileName = fileUrl.split('/').pop() || asset.asset_title;
-    const cursorClass = activeTool === 'pen' ? 'tool-pen' : activeTool === 'rect' ? 'tool-crosshair' : '';
+    const cursorClass = activeTool === 'pen' ? 'tool-pen' : ['rect', 'line', 'arrow', 'oval'].includes(activeTool) ? 'tool-crosshair' : '';
 
     return (
         <div className="asset-viewer">
@@ -691,9 +737,31 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                             <button
                                 className={`toolbar-btn ${activeTool === 'rect' ? 'active' : ''}`}
                                 onClick={() => setActiveTool('rect')}
-                                title="Rectangle select (R)"
+                                title="Rectangle (R)"
                             >
                                 <RectIcon />
+                            </button>
+                            <button
+                                className={`toolbar-btn ${activeTool === 'oval' ? 'active' : ''}`}
+                                onClick={() => setActiveTool('oval')}
+                                title="Oval (O)"
+                            >
+                                <OvalIcon />
+                            </button>
+                            <div className="toolbar-divider" />
+                            <button
+                                className={`toolbar-btn ${activeTool === 'line' ? 'active' : ''}`}
+                                onClick={() => setActiveTool('line')}
+                                title="Straight line (L)"
+                            >
+                                <LineIcon />
+                            </button>
+                            <button
+                                className={`toolbar-btn ${activeTool === 'arrow' ? 'active' : ''}`}
+                                onClick={() => setActiveTool('arrow')}
+                                title="Arrow (A)"
+                            >
+                                <ArrowIcon />
                             </button>
                             <button
                                 className={`toolbar-btn ${activeTool === 'pen' ? 'active' : ''}`}
@@ -702,6 +770,29 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                             >
                                 <PenIcon />
                             </button>
+                            <div className="toolbar-divider" />
+                            {/* Color picker */}
+                            <div className="color-picker-wrapper">
+                                <button
+                                    className="toolbar-btn color-swatch-trigger"
+                                    onClick={() => setShowColorPicker(!showColorPicker)}
+                                    title="Stroke color"
+                                >
+                                    <span className="color-swatch-preview" style={{ background: strokeColor }} />
+                                </button>
+                                {showColorPicker && (
+                                    <div className="color-picker-popover">
+                                        {ANNOTATION_COLORS.map((c) => (
+                                            <button
+                                                key={c}
+                                                className={`color-swatch ${strokeColor === c ? 'active' : ''}`}
+                                                style={{ background: c }}
+                                                onClick={() => { setStrokeColor(c); setShowColorPicker(false); }}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 
@@ -727,6 +818,13 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                         {/* SVG annotations overlay */}
                         {imageLoaded && !isVideo && (
                             <svg className="annotator-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                {/* Arrow marker definition */}
+                                <defs>
+                                    <marker id="arrowhead" markerWidth="4" markerHeight="3" refX="4" refY="1.5" orient="auto">
+                                        <polygon points="0 0, 4 1.5, 0 3" fill="var(--primary)" />
+                                    </marker>
+                                </defs>
+
                                 {annotations.map((ann) => {
                                     const type = getAnnType(ann);
                                     const isHovered = hoveredAnnotation === ann.id;
@@ -737,6 +835,36 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                                                 key={ann.id}
                                                 d={toSvgPath(ann.path)}
                                                 className={`annotation-freehand ${isHovered ? 'hovered' : ''}`}
+                                                style={ann.color ? { stroke: ann.color } : undefined}
+                                                onMouseEnter={() => setHoveredAnnotation(ann.id)}
+                                                onMouseLeave={() => setHoveredAnnotation(null)}
+                                            />
+                                        );
+                                    }
+                                    if ((type === 'line' || type === 'arrow') && ann.path && ann.path.length === 2) {
+                                        return (
+                                            <line
+                                                key={ann.id}
+                                                x1={ann.path[0].x} y1={ann.path[0].y}
+                                                x2={ann.path[1].x} y2={ann.path[1].y}
+                                                className={`annotation-line ${isHovered ? 'hovered' : ''}`}
+                                                style={ann.color ? { stroke: ann.color } : undefined}
+                                                markerEnd={type === 'arrow' ? 'url(#arrowhead)' : undefined}
+                                                onMouseEnter={() => setHoveredAnnotation(ann.id)}
+                                                onMouseLeave={() => setHoveredAnnotation(null)}
+                                            />
+                                        );
+                                    }
+                                    if (type === 'oval') {
+                                        return (
+                                            <ellipse
+                                                key={ann.id}
+                                                cx={ann.x + ann.width / 2}
+                                                cy={ann.y + ann.height / 2}
+                                                rx={ann.width / 2}
+                                                ry={ann.height / 2}
+                                                className={`annotation-oval ${isHovered ? 'hovered' : ''}`}
+                                                style={ann.color ? { stroke: ann.color } : undefined}
                                                 onMouseEnter={() => setHoveredAnnotation(ann.id)}
                                                 onMouseLeave={() => setHoveredAnnotation(null)}
                                             />
@@ -749,6 +877,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                                                 x={ann.x} y={ann.y}
                                                 width={ann.width} height={ann.height}
                                                 className={`annotation-rect ${isHovered ? 'hovered' : ''}`}
+                                                style={ann.color ? { stroke: ann.color } : undefined}
                                                 onMouseEnter={() => setHoveredAnnotation(ann.id)}
                                                 onMouseLeave={() => setHoveredAnnotation(null)}
                                             />
@@ -767,12 +896,29 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                                     );
                                 })}
 
-                                {/* Active rect selection */}
-                                {selectionRect && (
+                                {/* Active drag preview for rect / oval / line / arrow */}
+                                {isDragging && dragStart && dragCurrent && activeTool === 'rect' && (
                                     <rect
-                                        x={selectionRect.x} y={selectionRect.y}
-                                        width={selectionRect.width} height={selectionRect.height}
-                                        className="selection-rect"
+                                        x={selectionRect!.x} y={selectionRect!.y}
+                                        width={selectionRect!.width} height={selectionRect!.height}
+                                        className="selection-rect" style={{ stroke: strokeColor }}
+                                    />
+                                )}
+                                {isDragging && dragStart && dragCurrent && activeTool === 'oval' && (
+                                    <ellipse
+                                        cx={selectionRect!.x + selectionRect!.width / 2}
+                                        cy={selectionRect!.y + selectionRect!.height / 2}
+                                        rx={selectionRect!.width / 2}
+                                        ry={selectionRect!.height / 2}
+                                        className="drawing-oval" style={{ stroke: strokeColor }}
+                                    />
+                                )}
+                                {isDragging && dragStart && dragCurrent && (activeTool === 'line' || activeTool === 'arrow') && (
+                                    <line
+                                        x1={dragStart.x} y1={dragStart.y}
+                                        x2={dragCurrent.x} y2={dragCurrent.y}
+                                        className="drawing-line" style={{ stroke: strokeColor }}
+                                        markerEnd={activeTool === 'arrow' ? 'url(#arrowhead)' : undefined}
                                     />
                                 )}
 
@@ -780,7 +926,7 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                                 {isDrawing && currentPath.length > 1 && (
                                     <path
                                         d={toSvgPath(currentPath)}
-                                        className="drawing-path"
+                                        className="drawing-path" style={{ stroke: strokeColor }}
                                     />
                                 )}
                             </svg>
@@ -789,12 +935,26 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                         {/* Pending annotation overlay */}
                         {pendingAnnotation && !isVideo && imageLoaded && (
                             <svg className="annotator-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ pointerEvents: 'none' }}>
-                                {pendingAnnotation.annotation_type === 'freehand' && pendingAnnotation.path ? (
-                                    <path d={toSvgPath(pendingAnnotation.path)} className="pending-freehand" />
+                                {(pendingAnnotation.annotation_type === 'freehand') && pendingAnnotation.path ? (
+                                    <path d={toSvgPath(pendingAnnotation.path)} className="pending-freehand" style={{ stroke: pendingAnnotation.color || '#f59e0b' }} />
+                                ) : (pendingAnnotation.annotation_type === 'line' || pendingAnnotation.annotation_type === 'arrow') && pendingAnnotation.path && pendingAnnotation.path.length === 2 ? (
+                                    <line
+                                        x1={pendingAnnotation.path[0].x} y1={pendingAnnotation.path[0].y}
+                                        x2={pendingAnnotation.path[1].x} y2={pendingAnnotation.path[1].y}
+                                        fill="none" stroke={pendingAnnotation.color || '#f59e0b'} strokeWidth="0.4" strokeDasharray="1 0.5"
+                                    />
+                                ) : pendingAnnotation.annotation_type === 'oval' ? (
+                                    <ellipse
+                                        cx={pendingAnnotation.x + pendingAnnotation.width / 2}
+                                        cy={pendingAnnotation.y + pendingAnnotation.height / 2}
+                                        rx={pendingAnnotation.width / 2}
+                                        ry={pendingAnnotation.height / 2}
+                                        fill="rgba(251,191,36,0.1)" stroke={pendingAnnotation.color || '#f59e0b'} strokeWidth="0.3" strokeDasharray="1 0.5"
+                                    />
                                 ) : pendingAnnotation.width > 0 || pendingAnnotation.height > 0 ? (
                                     <rect x={pendingAnnotation.x} y={pendingAnnotation.y}
                                         width={pendingAnnotation.width} height={pendingAnnotation.height}
-                                        fill="rgba(251,191,36,0.2)" stroke="#f59e0b" strokeWidth="0.3" strokeDasharray="1 0.5"
+                                        fill="rgba(251,191,36,0.2)" stroke={pendingAnnotation.color || '#f59e0b'} strokeWidth="0.3" strokeDasharray="1 0.5"
                                     />
                                 ) : (
                                     <>
@@ -896,6 +1056,9 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                                                 <span className="comment-author">{ann.author_name}</span>
                                                 {type === 'freehand' && <span className="comment-tool-badge">✏️ Drawing</span>}
                                                 {type === 'rect' && <span className="comment-tool-badge">▢ Area</span>}
+                                                {type === 'line' && <span className="comment-tool-badge">╱ Line</span>}
+                                                {type === 'arrow' && <span className="comment-tool-badge">➜ Arrow</span>}
+                                                {type === 'oval' && <span className="comment-tool-badge">◯ Oval</span>}
                                                 <span className="comment-time">{timeAgo(ann.timestamp)}</span>
                                             </div>
                                             <p className="comment-text">{ann.comment}</p>
@@ -914,9 +1077,15 @@ const ImageAnnotator: React.FC<ImageAnnotatorProps> = ({ assetName, onBack }) =>
                                 <span>
                                     {pendingAnnotation.annotation_type === 'freehand'
                                         ? `Drawing attached (${pendingAnnotation.path?.length || 0} pts)`
-                                        : pendingAnnotation.annotation_type === 'rect'
-                                            ? `Area selected (${Math.round(pendingAnnotation.width)}% × ${Math.round(pendingAnnotation.height)}%)`
-                                            : `Pin at (${Math.round(pendingAnnotation.x)}%, ${Math.round(pendingAnnotation.y)}%)`}
+                                        : pendingAnnotation.annotation_type === 'line'
+                                            ? 'Line drawn'
+                                            : pendingAnnotation.annotation_type === 'arrow'
+                                                ? 'Arrow drawn'
+                                                : pendingAnnotation.annotation_type === 'oval'
+                                                    ? `Oval selected (${Math.round(pendingAnnotation.width)}% × ${Math.round(pendingAnnotation.height)}%)`
+                                                    : pendingAnnotation.annotation_type === 'rect'
+                                                        ? `Area selected (${Math.round(pendingAnnotation.width)}% × ${Math.round(pendingAnnotation.height)}%)`
+                                                        : `Pin at (${Math.round(pendingAnnotation.x)}%, ${Math.round(pendingAnnotation.y)}%)`}
                                 </span>
                                 <button className="pin-clear" onClick={() => setPendingAnnotation(null)}>✕</button>
                             </div>

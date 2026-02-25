@@ -571,6 +571,7 @@ def submit_annotation(
     height: float = 0,
     annotation_type: str = "",
     path: str = "",
+    color: str = "",
 ) -> dict:
     """Save an annotation to the latest IMS Asset Revision."""
     if not frappe.db.exists("IMS Marketing Asset", marketing_asset):
@@ -679,8 +680,10 @@ def submit_annotation(
         "revision_name": latest_revision,
     }
 
-    if annotation_type == "freehand" and path_data:
+    if path_data:
         annotation["path"] = path_data
+    if color:
+        annotation["color"] = color
 
     existing_annotations.append(annotation)
     revision.annotations = json.dumps(existing_annotations)
