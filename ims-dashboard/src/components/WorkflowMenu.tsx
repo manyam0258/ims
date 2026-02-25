@@ -9,7 +9,6 @@ interface WorkflowAction {
 
 interface WorkflowMenuProps {
     assetName: string;
-    currentState?: string;
     onTransitionComplete?: () => void;
     trigger: React.ReactNode;
     asBadge?: boolean;
@@ -17,7 +16,6 @@ interface WorkflowMenuProps {
 
 export const WorkflowMenu: React.FC<WorkflowMenuProps> = ({
     assetName,
-    currentState,
     onTransitionComplete,
     trigger,
     asBadge = false
