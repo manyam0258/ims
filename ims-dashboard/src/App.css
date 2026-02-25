@@ -271,7 +271,105 @@ body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: background 0.3s;
+  transition: width 0.25s ease, background 0.3s;
+}
+
+/* ── Collapsed state ── */
+.sidebar.collapsed {
+  width: 64px;
+  overflow: visible;
+}
+
+.sidebar.collapsed .brand-text,
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .nav-badge,
+.sidebar.collapsed .user-details,
+.sidebar.collapsed .user-expand,
+.sidebar.collapsed .theme-label {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.15s ease, width 0.15s ease;
+}
+
+/* Let the expanded state animate in */
+.brand-text,
+.nav-label,
+.nav-badge,
+.user-details,
+.user-expand,
+.theme-label {
+  transition: opacity 0.2s ease 0.1s, width 0.2s ease 0.1s;
+}
+
+/* Brand area: stack logo + toggle vertically, centered */
+.sidebar.collapsed .sidebar-brand {
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 8px 8px;
+}
+
+.sidebar.collapsed .brand-logo {
+  margin: 0 auto;
+}
+
+.sidebar.collapsed .sidebar-collapse-btn {
+  margin-left: 0;
+}
+
+/* Nav items: centered icons */
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+/* Footer: center everything */
+.sidebar.collapsed .sidebar-footer {
+  align-items: center;
+  padding: 10px 0 14px;
+}
+
+.sidebar.collapsed .theme-toggle {
+  justify-content: center;
+  padding: 8px 0;
+  width: auto;
+}
+
+.sidebar.collapsed .user-info {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.sidebar.collapsed .user-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── Collapse toggle button ── */
+.sidebar-collapse-btn {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-collapse-btn:hover {
+  background: var(--sidebar-active);
+  color: var(--text);
 }
 
 .sidebar-brand {
@@ -3725,6 +3823,28 @@ body {
   overflow: hidden;
   z-index: 100;
   animation: dropdownSlide 0.15s ease-out;
+}
+
+/* Pop dropdown to the right when sidebar is collapsed */
+.sidebar.collapsed .user-dropdown {
+  left: calc(100% + 6px);
+  right: auto;
+  bottom: 0;
+  min-width: 180px;
+  white-space: nowrap;
+  animation: dropdownSlideRight 0.15s ease-out;
+}
+
+@keyframes dropdownSlideRight {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes dropdownSlide {

@@ -12,6 +12,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, darkMode, onToggleDarkMode, refreshKey }) => {
     const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [collapsed, setCollapsed] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
     // Fetch unread notification count
@@ -51,7 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, dar
     ];
 
     return (
-        <aside className="sidebar">
+        <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
             <div className="sidebar-brand">
                 <div className="brand-logo">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -61,6 +62,13 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, dar
                     </svg>
                 </div>
                 <span className="brand-text">IMS</span>
+                <button
+                    className="sidebar-collapse-btn"
+                    onClick={() => setCollapsed(!collapsed)}
+                    title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                >
+                    <CollapseIcon collapsed={collapsed} />
+                </button>
             </div>
 
             <nav className="sidebar-nav">
@@ -69,6 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, dar
                         key={item.id}
                         className={`nav-item ${activePage === item.id ? 'active' : ''}`}
                         onClick={() => onNavigate(item.id)}
+                        title={collapsed ? item.label : undefined}
                     >
                         <span className="nav-icon">{item.icon}</span>
                         <span className="nav-label">{item.label}</span>
@@ -80,7 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, dar
             <div className="sidebar-footer">
                 <button className="theme-toggle" onClick={onToggleDarkMode} title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
                     {darkMode ? <SunIcon /> : <MoonIcon />}
-                    <span>{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
+                    <span className="theme-label">{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
                 </button>
 
                 <div className="user-section" ref={menuRef}>
@@ -128,6 +137,17 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, onNavigate, userName, dar
 };
 
 // SVG Icons
+function CollapseIcon({ collapsed }: { collapsed: boolean }) {
+    return (
+        <svg
+            width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s ease' }}
+        >
+            <polyline points="15 18 9 12 15 6" />
+        </svg>
+    );
+}
 function DashboardIcon() {
     return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>;
 }

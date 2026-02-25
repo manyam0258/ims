@@ -5,8 +5,14 @@ no_cache = 1
 
 
 def get_context(context):
-    # This ensures frappe.session.csrf_token is generated and available
-    context.csrf_token = frappe.sessions.get_csrf_token()
+    # This forces a fresh token generation for the current session
+    csrf_token = frappe.sessions.get_csrf_token()
+    context.csrf_token = csrf_token
+
+    # Optional: Add headers to prevent downstream caching
+    frappe.local.response.headers["Cache-Control"] = (
+        "no-store, no-cache, must-revalidate, max-age=0"
+    )
     return context
 
 

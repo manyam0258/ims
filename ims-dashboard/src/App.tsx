@@ -144,29 +144,19 @@ function AppContent() {
 }
 
 // App.tsx
-
-const getCsrfToken = () => {
-	// Priority 1: The window variable set by your Jinja template
-	if (window.csrf_token && window.csrf_token !== '{{ frappe.session.csrf_token }}') {
-		return window.csrf_token;
-	}
-
-	// Priority 2: Cookie fallback (Frappe cookies are usually 'sid')
-	const cookieValue = document.cookie
-		.split('; ')
-		.find(row => row.startsWith('csrf_token='))
-		?.split('=')[1];
-
-	return cookieValue || "";
-};
-
 function App() {
+	// Use a helper to get the latest token from the DOM/Window
+	const getHeaderToken = () => {
+		return (window as any).csrf_token || "";
+	};
+
 	return (
 		<FrappeProvider
 			url={window.location.origin}
-			// Use a function or ensure this is evaluated correctly
+			// Pass the token here. Note: If using frappe-react-sdk, 
+			// it usually tries to handle this via cookies automatically.
 			customHeaders={{
-				'X-Frappe-CSRF-Token': getCsrfToken()
+				'X-Frappe-CSRF-Token': getHeaderToken(),
 			}}
 		>
 			<AppContent />
